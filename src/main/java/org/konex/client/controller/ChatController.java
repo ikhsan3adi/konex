@@ -39,7 +39,9 @@ public class ChatController implements ChatObserver {
         String text = messageInput.getText();
         if (text.isEmpty()) return;
 
-        Message msg = MessageFactory.createMessage(currentUser, text);
+        // Gunakan "global_room" atau ID statis dulu agar kode jalan
+        String currentChatId = "global_room";
+        Message msg = MessageFactory.createMessage(currentChatId, currentUser, text);
         client.sendMessage(msg);
         messageInput.clear();
         addBubbleChat(msg, true);

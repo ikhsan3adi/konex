@@ -2,6 +2,7 @@ package org.konex.client.service;
 
 import org.konex.common.interfaces.ChatObserver;
 import org.konex.common.model.Message;
+import org.konex.common.model.MessageFactory;
 import org.konex.common.model.User;
 
 import java.io.IOException;
@@ -20,7 +21,8 @@ public class SocketClient {
     private volatile boolean running = true;
     private final List<ChatObserver> observers = new CopyOnWriteArrayList<>();
 
-    private SocketClient() {}
+    private SocketClient() {
+    }
 
     public static synchronized SocketClient getInstance() {
         if (instance == null) {
@@ -36,6 +38,9 @@ public class SocketClient {
         this.output.flush();
         this.input = new ObjectInputStream(socket.getInputStream());
 
+        Message joinMsg = MessageFactory.createMessage("SYSTEM", user, "JOINED");
+        sendMessage(joinMsg);
+
         Thread listenerThread = new Thread(this::listen);
         listenerThread.setDaemon(true);
         listenerThread.start();
@@ -43,9 +48,11 @@ public class SocketClient {
 
     public void sendMessage(Message message) {
         try {
-            if (output != null) {
-                output.writeObject(message);
-                output.flush();
+            synchronized (this) {
+                if (output != null) {
+                    output.writeObject(message);
+                    output.flush();
+                }
             }
         } catch (IOException e) {
             System.err.println(e.getMessage());
