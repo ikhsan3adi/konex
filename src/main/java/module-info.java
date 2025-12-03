@@ -11,6 +11,8 @@ module org.konex.konex {
     requires org.mongodb.bson;
     requires org.mongodb.driver.core;
     requires com.fasterxml.jackson.databind;
+    requires java.dotenv;
+    requires java.logging;
 
     opens org.konex to javafx.fxml;
     exports org.konex;
