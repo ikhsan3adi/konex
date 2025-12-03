@@ -17,20 +17,16 @@
       </font>
    </Label>
    <Label text="Masukkan Identitas Anda" textFill="#757575" />
-   
-   <VBox spacing="5.0">
-      <children>
-         <Label text="Nama Lengkap" />
-         <TextField fx:id="nameField" promptText="Contoh: Budi Santoso" />
-      </children>
-   </VBox>
-   
-   <VBox spacing="5.0">
-      <children>
-         <Label text="Nomor Telepon" />
-         <TextField fx:id="phoneField" promptText="Contoh: 08123456789" />
-      </children>
-   </VBox>
+
+    <VBox spacing="5.0">
+        <Label text="Nama Lengkap"/>
+        <TextField fx:id="nameField" promptText="Contoh: Budi Santoso"/>
+    </VBox>
+
+    <VBox spacing="5.0">
+        <Label text="Nomor Telepon"/>
+        <TextField fx:id="phoneField" promptText="Contoh: 08123456789"/>
+    </VBox>
    
     <Button defaultButton="true" maxWidth="1.7976931348623157E308" onAction="#onLoginClick" style="-fx-background-color: #2196F3; -fx-text-fill: white;" text="Masuk">
       <font>

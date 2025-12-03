@@ -38,12 +38,17 @@ public class SocketClient {
         this.output.flush();
         this.input = new ObjectInputStream(socket.getInputStream());
 
-        Message joinMsg = MessageFactory.createMessage("SYSTEM", user, "JOINED");
-        sendMessage(joinMsg);
 
         Thread listenerThread = new Thread(this::listen);
         listenerThread.setDaemon(true);
         listenerThread.start();
+    }
+
+    public void sendJoinMessage() {
+        if (currentUser == null) return;
+
+        Message joinMsg = MessageFactory.createMessage("global_room", currentUser, "JOINED");
+        sendMessage(joinMsg);
     }
 
     public void sendMessage(Message message) {
@@ -52,6 +57,7 @@ public class SocketClient {
                 if (output != null) {
                     output.writeObject(message);
                     output.flush();
+                    output.reset();
                 }
             }
         } catch (IOException e) {
