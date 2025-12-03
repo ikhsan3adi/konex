@@ -1,16 +1,43 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
 <?import javafx.geometry.Insets?>
-<?import javafx.scene.control.Label?>
-<?import javafx.scene.layout.VBox?>
-
 <?import javafx.scene.control.Button?>
-<VBox alignment="CENTER" spacing="20.0" xmlns:fx="http://javafx.com/fxml"
-      fx:controller="org.konex.client.controller.LoginController">
-  <padding>
-    <Insets bottom="20.0" left="20.0" right="20.0" top="20.0"/>
-  </padding>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.control.TextField?>
+<?import javafx.scene.layout.VBox?>
+<?import javafx.scene.text.Font?>
 
-    <Label fx:id="welcomeText"/>
-    <Button text="Hello!" onAction="#onHelloButtonClick"/>
+<VBox alignment="CENTER" prefHeight="300.0" prefWidth="400.0" spacing="15.0" xmlns="http://javafx.com/javafx/21" xmlns:fx="http://javafx.com/fxml/1" fx:controller="org.konex.client.controller.LoginController">
+    <padding>
+        <Insets bottom="20.0" left="20.0" right="20.0" top="20.0" />
+    </padding>
+   <Label text="KoneX Login">
+      <font>
+         <Font name="System Bold" size="24.0" />
+      </font>
+   </Label>
+   <Label text="Masukkan Identitas Anda" textFill="#757575" />
+   
+   <VBox spacing="5.0">
+      <children>
+         <Label text="Nama Lengkap" />
+         <TextField fx:id="nameField" promptText="Contoh: Budi Santoso" />
+      </children>
+   </VBox>
+   
+   <VBox spacing="5.0">
+      <children>
+         <Label text="Nomor Telepon" />
+         <TextField fx:id="phoneField" promptText="Contoh: 08123456789" />
+      </children>
+   </VBox>
+   
+    <Button defaultButton="true" maxWidth="1.7976931348623157E308" onAction="#onLoginClick" style="-fx-background-color: #2196F3; -fx-text-fill: white;" text="Masuk">
+      <font>
+         <Font name="System Bold" size="14.0" />
+      </font>
+      <VBox.margin>
+         <Insets top="10.0" />
+      </VBox.margin>
+   </Button>
 </VBox>
