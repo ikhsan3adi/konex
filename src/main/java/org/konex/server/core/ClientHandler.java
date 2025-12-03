@@ -1,6 +1,10 @@
 package org.konex.server.core;
 
+import org.bson.Document;
+import org.konex.common.model.ImageMessage;
 import org.konex.common.model.Message;
+import org.konex.common.model.TextMessage;
+import org.konex.server.database.DatabaseManager;
 
 import java.io.EOFException;
 import java.io.IOException;
@@ -55,8 +59,36 @@ public class ClientHandler implements Runnable {
     }
 
     private void broadcast(Message msg) {
+        saveToDatabase(msg);
+
         for (ClientHandler client : CLIENTS) {
             client.send(msg);
+        }
+    }
+
+    private void saveToDatabase(Message msg) {
+        try {
+            Document doc = new Document()
+                    .append("chatId", msg.getChatId())
+                    .append("senderPhone", msg.getSender().getPhoneNumber())
+                    .append("senderName", msg.getSender().getName())
+                    .append("timestamp", msg.getDate())
+                    .append("type", msg.getType());
+
+            if (msg instanceof TextMessage) {
+                doc.append("content", msg.getContent());
+            } else if (msg instanceof ImageMessage imgMsg) {
+                doc.append("caption", msg.getContent());
+                doc.append("base64Data", imgMsg.getBase64Data());
+            }
+
+            DatabaseManager.getInstance()
+                    .getCollection("messages")
+                    .insertOne(doc);
+
+            LOGGER.info("Message saved to MongoDB: " + msg.getChatId());
+        } catch (Exception e) {
+            LOGGER.log(Level.SEVERE, "Failed to save message to DB", e);
         }
     }
 
