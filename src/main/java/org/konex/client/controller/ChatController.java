@@ -4,13 +4,18 @@ import javafx.application.Platform;
 import javafx.fxml.FXML;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
+import javafx.scene.Cursor;
 import javafx.scene.Node;
+import javafx.scene.Scene;
 import javafx.scene.control.*;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
+import javafx.scene.input.KeyCode;
 import javafx.scene.layout.HBox;
+import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import javafx.stage.FileChooser;
+import javafx.stage.Stage;
 import org.konex.client.ClientApp;
 import org.konex.client.service.SocketClient;
 import org.konex.common.interfaces.ChatObserver;
@@ -207,11 +212,24 @@ public class ChatController implements ChatObserver {
         File file = fileChooser.showOpenDialog(messageInput.getScene().getWindow());
 
         if (file != null) {
+            TextInputDialog dialog = new TextInputDialog();
+            dialog.setTitle("Kirim Gambar");
+            dialog.setHeaderText("Tambahkan caption (opsional):");
+            dialog.setContentText("Caption:");
+
+            Optional<String> result = dialog.showAndWait();
+
+            if (result.isEmpty()) return;
+
+            String caption = result.get().trim();
+
+            if (caption.isEmpty()) caption = "";
+
             try {
                 byte[] fileContent = Files.readAllBytes(file.toPath());
                 String base64Image = Base64.getEncoder().encodeToString(fileContent);
 
-                Message msg = MessageFactory.createMessage(currentChatId, currentUser, "[Gambar]", base64Image);
+                Message msg = MessageFactory.createMessage(currentChatId, currentUser, caption, base64Image);
                 client.sendMessage(msg);
             } catch (IOException e) {
                 showAlert("Error", "Gagal membaca file gambar.");
@@ -255,7 +273,22 @@ public class ChatController implements ChatObserver {
                 ImageView imageView = new ImageView(img);
                 imageView.setFitWidth(200);
                 imageView.setPreserveRatio(true);
-                contentNode = imageView;
+                imageView.setCursor(Cursor.HAND);
+                imageView.setOnMouseClicked(event -> showFullscreenImage(img));
+
+                String captionText = msg.getContent();
+
+                if (captionText != null && !captionText.isEmpty()) {
+                    Label captionLabel = new Label(captionText);
+                    captionLabel.setWrapText(true);
+                    captionLabel.setMaxWidth(200);
+                    captionLabel.setStyle("-fx-font-style: italic; -fx-padding: 5 0 0 0;");
+
+                    contentNode = new VBox(imageView, captionLabel);
+                } else {
+                    contentNode = imageView;
+                }
+
             } catch (Exception e) {
                 contentNode = new Label("[Gambar Rusak]");
             }
@@ -283,6 +316,35 @@ public class ChatController implements ChatObserver {
 
         row.getChildren().add(bubble);
         messageContainer.getChildren().add(row);
+    }
+
+    private void showFullscreenImage(Image image) {
+        Stage stage = new Stage();
+        stage.setTitle("Lihat Gambar");
+
+        ImageView fullImageView = new ImageView(image);
+        fullImageView.setPreserveRatio(true);
+        fullImageView.setSmooth(true);
+        fullImageView.setCache(true);
+
+        StackPane root = new StackPane(fullImageView);
+        root.setStyle("-fx-background-color: black;");
+        root.setPadding(new Insets(20));
+
+        fullImageView.fitWidthProperty().bind(root.widthProperty().subtract(40));
+        fullImageView.fitHeightProperty().bind(root.heightProperty().subtract(40));
+
+        Scene scene = new Scene(root, 800, 600);
+
+        scene.setOnKeyPressed(event -> {
+            if (event.getCode() == KeyCode.ESCAPE) {
+                stage.close();
+            }
+        });
+        fullImageView.setOnMouseClicked(event -> stage.close());
+
+        stage.setScene(scene);
+        stage.show();
     }
 
     private void showAlert(String title, String content) {
