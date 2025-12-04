@@ -14,6 +14,9 @@ import javafx.scene.input.KeyCode;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
+import javafx.scene.paint.Color;
+import javafx.scene.shape.Circle;
+import javafx.scene.text.Text;
 import javafx.stage.FileChooser;
 import javafx.stage.Stage;
 import org.konex.client.ClientApp;
@@ -65,6 +68,9 @@ public class ChatController implements ChatObserver {
             if (mainScrollPane != null) mainScrollPane.setVvalue(1.0);
         });
 
+        mainScrollPane.setStyle("-fx-background: #e5ddd5; -fx-background-color: #e5ddd5;");
+        messageContainer.setStyle("-fx-background-color: #e5ddd5;");
+
         joinRoom(currentChatId, currentChatName);
         requestRoomList();
     }
@@ -78,6 +84,54 @@ public class ChatController implements ChatObserver {
                 }
             }
         });
+
+        chatList.setCellFactory(lv -> new ListCell<String>() {
+            @Override
+            protected void updateItem(String item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || item == null) {
+                    setText(null);
+                    setGraphic(null);
+                    setStyle("-fx-background-color: transparent;");
+                } else {
+                    HBox cellLayout = new HBox();
+                    cellLayout.setAlignment(Pos.CENTER_LEFT);
+                    cellLayout.setSpacing(10);
+
+                    String initial = !item.isEmpty() ? item.substring(0, 1).toUpperCase() : "#";
+                    StackPane avatar = createGroupAvatar(initial);
+
+                    Label nameLabel = new Label(item);
+                    nameLabel.setStyle("-fx-font-size: 14px; -fx-text-fill: #333; -fx-font-weight: bold;");
+
+                    cellLayout.getChildren().addAll(avatar, nameLabel);
+
+                    setGraphic(cellLayout);
+                    setText(null);
+
+                    setPadding(new Insets(8, 10, 8, 10));
+
+                    if (isSelected()) {
+                        setStyle("-fx-background-color: #e0e0e0; -fx-background-radius: 5; -fx-cursor: hand;");
+                    } else {
+                        setStyle("-fx-background-color: white; -fx-border-color: #f0f0f0; -fx-border-width: 0 0 1 0; -fx-cursor: hand;");
+                    }
+                }
+            }
+        });
+
+        chatList.setStyle("-fx-background-color: transparent; -fx-control-inner-background: white; -fx-padding: 5;");
+    }
+
+    private StackPane createGroupAvatar(String letter) {
+        Circle bg = new Circle(20);
+        bg.setFill(Color.web("#2196F3"));
+
+        Text text = new Text(letter);
+        text.setFill(Color.web("#ffffff"));
+        text.setStyle("-fx-font-weight: bold; -fx-font-size: 14px;");
+
+        return new StackPane(bg, text);
     }
 
     private void joinRoom(String chatId, String chatName) {
@@ -262,60 +316,123 @@ public class ChatController implements ChatObserver {
 
     private void addBubbleChat(Message msg, boolean isSelf) {
         HBox row = new HBox();
-        row.setPadding(new Insets(5));
+        row.setPadding(new Insets(5, 0, 5, 0));
+        row.setSpacing(10);
 
         Node contentNode;
-
         if (msg instanceof ImageMessage imgMsg) {
             try {
                 byte[] imageBytes = Base64.getDecoder().decode(imgMsg.getBase64Data());
                 Image img = new Image(new ByteArrayInputStream(imageBytes));
                 ImageView imageView = new ImageView(img);
-                imageView.setFitWidth(200);
+                imageView.setFitWidth(220);
                 imageView.setPreserveRatio(true);
                 imageView.setCursor(Cursor.HAND);
+
+                imageView.imageProperty().addListener((obs, o, newImg) -> {
+                    if (newImg != null) {
+                        double h = newImg.getHeight() * (220 / newImg.getWidth());
+                        javafx.scene.shape.Rectangle dynClip = new javafx.scene.shape.Rectangle(220, h);
+                        dynClip.setArcWidth(15);
+                        dynClip.setArcHeight(15);
+                        imageView.setClip(dynClip);
+                    }
+                });
+
                 imageView.setOnMouseClicked(event -> showFullscreenImage(img));
 
                 String captionText = msg.getContent();
-
                 if (captionText != null && !captionText.isEmpty()) {
                     Label captionLabel = new Label(captionText);
                     captionLabel.setWrapText(true);
-                    captionLabel.setMaxWidth(200);
-                    captionLabel.setStyle("-fx-font-style: italic; -fx-padding: 5 0 0 0;");
-
+                    captionLabel.setMaxWidth(220);
+                    captionLabel.setStyle("-fx-font-size: 14px; -fx-padding: 5 0 0 0;");
                     contentNode = new VBox(imageView, captionLabel);
                 } else {
                     contentNode = imageView;
                 }
-
             } catch (Exception e) {
-                contentNode = new Label("[Gambar Rusak]");
+                contentNode = new Label("⚠️ Gambar Rusak");
             }
         } else {
-            String txt = isSelf ? msg.getContent() : msg.getSender().getName() + ":\n" + msg.getContent();
-            contentNode = new Label(txt);
-            ((Label) contentNode).setWrapText(true);
-            ((Label) contentNode).setMaxWidth(300);
+            Label textLabel = new Label(msg.getContent());
+            textLabel.setWrapText(true);
+            textLabel.setMaxWidth(300);
+            textLabel.setStyle("-fx-font-size: 14px; -fx-text-fill: black;");
+            contentNode = textLabel;
         }
+
+        VBox bubble = new VBox();
+        bubble.setPadding(new Insets(8, 12, 8, 12));
+        bubble.setMaxWidth(350);
+
+        if (!isSelf) {
+            Label nameLabel = new Label(msg.getSender().getName());
+            nameLabel.setStyle("-fx-font-weight: bold; -fx-font-size: 12px; -fx-text-fill: #E53935;"); // Merah bata
+            nameLabel.setPadding(new Insets(0, 0, 3, 0));
+            bubble.getChildren().add(nameLabel);
+        }
+
+        bubble.getChildren().add(contentNode);
 
         Label timeLabel = new Label(timeFormat.format(msg.getDate()));
-        timeLabel.setStyle("-fx-font-size: 10px; -fx-text-fill: gray;");
-        timeLabel.setAlignment(Pos.BOTTOM_RIGHT);
-        VBox bubbleContent = new VBox(contentNode, timeLabel);
+        timeLabel.setStyle("-fx-font-size: 10px; -fx-text-fill: #757575;");
+        timeLabel.setPadding(new Insets(4, 0, 0, 0));
 
-        HBox bubble = new HBox(bubbleContent);
-        bubble.setPadding(new Insets(10));
+        HBox timeBox = new HBox(timeLabel);
+        timeBox.setAlignment(Pos.BOTTOM_RIGHT);
+        bubble.getChildren().add(timeBox);
+
         if (isSelf) {
             row.setAlignment(Pos.CENTER_RIGHT);
-            bubble.setStyle("-fx-background-color: #DCF8C6; -fx-background-radius: 10;");
+
+            bubble.setStyle("-fx-background-color: #dcf8c6; " +
+                    "-fx-background-radius: 15 15 0 15; " +
+                    "-fx-effect: dropshadow(three-pass-box, rgba(0,0,0,0.1), 3, 0, 0, 1);");
+
+            row.getChildren().add(bubble);
+
         } else {
             row.setAlignment(Pos.CENTER_LEFT);
-            bubble.setStyle("-fx-background-color: white; -fx-background-radius: 10; -fx-border-color: #ddd;");
+
+            bubble.setStyle("-fx-background-color: #ffffff; " +
+                    "-fx-background-radius: 15 15 15 0; " +
+                    "-fx-effect: dropshadow(three-pass-box, rgba(0,0,0,0.1), 3, 0, 0, 1);");
+
+            Node avatarNode = createAvatar(msg.getSender());
+
+            row.getChildren().addAll(avatarNode, bubble);
         }
 
-        row.getChildren().add(bubble);
         messageContainer.getChildren().add(row);
+    }
+
+    private Node createAvatar(User user) {
+        double size = 35.0;
+
+        if (user.getProfileImage() != null && !user.getProfileImage().isEmpty()) {
+            try {
+                byte[] imgBytes = Base64.getDecoder().decode(user.getProfileImage());
+                Image img = new Image(new ByteArrayInputStream(imgBytes));
+
+                Circle circle = new Circle(size / 2);
+                circle.setStroke(Color.LIGHTGRAY);
+                circle.setFill(new javafx.scene.paint.ImagePattern(img));
+                return circle;
+            } catch (Exception ignored) {
+            }
+        }
+
+        Circle bg = new Circle(size / 2);
+        bg.setFill(Color.web("#2196F3"));
+
+        String initial = !user.getName().isEmpty() ? user.getName().substring(0, 1).toUpperCase() : "?";
+        Text text = new Text(initial);
+        text.setFill(Color.WHITE);
+        text.setStyle("-fx-font-weight: bold;");
+
+        StackPane stack = new StackPane(bg, text);
+        return stack;
     }
 
     private void showFullscreenImage(Image image) {
