@@ -2,9 +2,11 @@
 
 <?import javafx.geometry.Insets?>
 <?import javafx.scene.control.*?>
+<?import javafx.scene.image.ImageView?>
 <?import javafx.scene.layout.*?>
+<?import javafx.scene.shape.Circle?>
 <?import javafx.scene.text.Font?>
-<VBox alignment="CENTER" prefHeight="350.0" prefWidth="400.0" spacing="15.0" xmlns="http://javafx.com/javafx/21"
+<VBox alignment="CENTER" prefHeight="450.0" prefWidth="400.0" spacing="15.0" xmlns="http://javafx.com/javafx/21"
       xmlns:fx="http://javafx.com/fxml/1" fx:controller="org.konex.client.controller.LoginController">
     <padding>
         <Insets bottom="20.0" left="20.0" right="20.0" top="20.0"/>
@@ -14,7 +16,25 @@
             <Font name="System Bold" size="24.0"/>
         </font>
     </Label>
-    <Label text="Masukkan Identitas Anda" textFill="#757575"/>
+    <Label text="Lengkapi profil Anda untuk masuk" textFill="#757575"/>
+
+    <StackPane onMouseClicked="#onSelectPhotoClick" style="-fx-cursor: hand;">
+        <Circle fill="#e0e0e0" radius="40.0" stroke="#bdbdbd" strokeType="INSIDE"/>
+
+        <Label fx:id="uploadPlaceholder" text="📷" textFill="#9e9e9e" alignment="CENTER">
+            <font>
+                <Font name="System Bold" size="36.0"/>
+            </font>
+        </Label>
+
+        <ImageView fx:id="profilePreview" fitHeight="80.0" fitWidth="80.0" preserveRatio="true">
+        </ImageView>
+    </StackPane>
+    <Label text="Klik untuk upload foto" textFill="#9e9e9e" style="-fx-font-size: 10px;" VBox.vgrow="NEVER">
+        <VBox.margin>
+            <Insets top="-10.0"/>
+        </VBox.margin>
+    </Label>
 
     <VBox spacing="5.0">
         <Label text="Nama Lengkap"/>
@@ -32,7 +52,7 @@
     </VBox>
 
     <Button defaultButton="true" maxWidth="1.7976931348623157E308" onAction="#onLoginClick"
-            style="-fx-background-color: #2196F3; -fx-text-fill: white;" text="Masuk">
+            style="-fx-background-color: #2196F3; -fx-text-fill: white;" text="Masuk / Daftar">
         <font>
             <Font name="System Bold" size="14.0"/>
         </font>

@@ -109,17 +109,27 @@ public class ClientHandler implements Runnable {
             String dbPassword = userDoc.getString("password");
 
             if (dbPassword != null && dbPassword.equals(passwordInput)) {
-                User dbUser = new User();
-                dbUser.setPhoneNumber(phone);
-                dbUser.setName(userDoc.getString("name"));
-                dbUser.setProfileImage(userDoc.getString("profileImage"));
-                dbUser.setPassword(dbPassword);
+                String newImage = requestUser.getProfileImage();
 
-                this.currentUser = dbUser;
+                if (newImage != null && !newImage.isEmpty()) {
+                    requestUser.setPassword(passwordInput);
+                    saveUserToDB(requestUser);
+
+                    this.currentUser = requestUser;
+                } else {
+                    User dbUser = new User();
+                    dbUser.setPhoneNumber(phone);
+                    dbUser.setName(userDoc.getString("name"));
+                    dbUser.setProfileImage(userDoc.getString("profileImage"));
+                    dbUser.setPassword(dbPassword);
+
+                    this.currentUser = dbUser;
+                }
+
                 SESSIONS.put(phone, this);
 
-                LOGGER.info("User Logged In: " + dbUser.getName());
-                sendResponse(Response.success("LOGIN_SUCCESS", dbUser));
+                LOGGER.info("User Logged In: " + this.currentUser.getName());
+                sendResponse(Response.success("LOGIN_SUCCESS", this.currentUser));
             } else {
                 LOGGER.warning("Login Failed (Wrong Password): " + phone);
                 sendResponse(Response.error("LOGIN_FAILED", "Password Salah!"));

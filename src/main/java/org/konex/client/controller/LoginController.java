@@ -4,15 +4,24 @@ import javafx.fxml.FXML;
 import javafx.fxml.FXMLLoader;
 import javafx.scene.Scene;
 import javafx.scene.control.Alert;
+import javafx.scene.control.Label;
 import javafx.scene.control.PasswordField;
 import javafx.scene.control.TextField;
+import javafx.scene.image.Image;
+import javafx.scene.image.ImageView;
+import javafx.scene.shape.Circle;
+import javafx.stage.FileChooser;
 import javafx.stage.Stage;
 import org.konex.client.ClientApp;
 import org.konex.client.service.SocketClient;
 import org.konex.common.model.User;
 import org.konex.common.model.UserBuilder;
 
+import java.io.ByteArrayInputStream;
+import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.util.Base64;
 
 public class LoginController {
     @FXML
@@ -21,6 +30,65 @@ public class LoginController {
     private TextField phoneField;
     @FXML
     private PasswordField passwordField;
+    @FXML
+    private ImageView profilePreview;
+    @FXML
+    private Label uploadPlaceholder;
+
+    private String base64ProfileImage = null;
+
+    @FXML
+    public void initialize() {
+        Circle clip = new Circle(40, 40, 40);
+        profilePreview.setClip(clip);
+    }
+
+    @FXML
+    protected void onSelectPhotoClick() {
+        FileChooser fileChooser = new FileChooser();
+        fileChooser.setTitle("Pilih Foto Profil");
+        fileChooser.getExtensionFilters().add(
+                new FileChooser.ExtensionFilter("Image Files", "*.png", "*.jpg", "*.jpeg"));
+
+        File file = fileChooser.showOpenDialog(nameField.getScene().getWindow());
+
+        if (file != null) {
+            try {
+                byte[] fileContent = Files.readAllBytes(file.toPath());
+                this.base64ProfileImage = Base64.getEncoder().encodeToString(fileContent);
+
+                Image img = new Image(new ByteArrayInputStream(fileContent));
+                profilePreview.setImage(img);
+
+                setImageCentered(profilePreview, img);
+
+                if (uploadPlaceholder != null) {
+                    uploadPlaceholder.setVisible(false);
+                }
+            } catch (IOException e) {
+                showAlert("Error", "Gagal membaca file gambar.");
+            }
+        }
+    }
+
+    private void setImageCentered(ImageView imageView, Image img) {
+        if (img == null) return;
+
+        double w = img.getWidth();
+        double h = img.getHeight();
+
+        double minSize = Math.min(w, h);
+        double x = (w - minSize) / 2;
+        double y = (h - minSize) / 2;
+
+        imageView.setViewport(new javafx.geometry.Rectangle2D(x, y, minSize, minSize));
+
+        imageView.setImage(img);
+
+        imageView.setFitWidth(80);
+        imageView.setFitHeight(80);
+        imageView.setSmooth(true);
+    }
 
     @FXML
     protected void onLoginClick() {
@@ -38,6 +106,7 @@ public class LoginController {
                     .setName(name)
                     .setPhone(phone)
                     .setPassword(password)
+                    .setProfileImage(base64ProfileImage)
                     .build();
 
             SocketClient client = SocketClient.getInstance();
