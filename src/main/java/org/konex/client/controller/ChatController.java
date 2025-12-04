@@ -27,6 +27,7 @@ import java.text.SimpleDateFormat;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 
 public class ChatController implements ChatObserver {
 
@@ -144,6 +145,25 @@ public class ChatController implements ChatObserver {
         }
     }
 
+    @FXML
+    protected void onCreateGroupClick() {
+        TextInputDialog dialog = new TextInputDialog();
+        dialog.setTitle("Buat Grup Baru");
+        dialog.setHeaderText("Silakan masukkan nama grup:");
+        dialog.setContentText("Nama Grup:");
+
+        Optional<String> result = dialog.showAndWait();
+
+        result.ifPresent(name -> {
+            if (!name.trim().isEmpty()) {
+                // Kirim perintah CREATE_GROUP ke server
+                // Format: CREATE_GROUP:NamaGrup
+                // ChatID "SYSTEM" dipakai karena ini pesan sistem
+                Message msg = MessageFactory.createMessage("SYSTEM", currentUser, "CREATE_GROUP:" + name.trim());
+                client.sendMessage(msg);
+            }
+        });
+    }
 
     @FXML
     protected void onSendClick() {
@@ -180,6 +200,8 @@ public class ChatController implements ChatObserver {
     @FXML
     protected void onLogoutClick() {
         try {
+            // SocketClient.getInstance().disconnect();
+
             javafx.fxml.FXMLLoader fxmlLoader = new javafx.fxml.FXMLLoader(ClientApp.class.getResource("login-view.fxml"));
             javafx.scene.Scene scene = new javafx.scene.Scene(fxmlLoader.load(), 400, 300);
             javafx.stage.Stage stage = (javafx.stage.Stage) headerLabel.getScene().getWindow();

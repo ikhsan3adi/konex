@@ -20,6 +20,7 @@ import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.net.Socket;
+import java.util.Collection;
 import java.util.Date;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -69,11 +70,11 @@ public class ClientHandler implements Runnable {
 
                 if ("JOINED".equals(content)) {
                     handleJoin(message);
-                }
-                else if ("REQ_ROOMS".equals(content)) {
+                } else if ("REQ_ROOMS".equals(content)) {
                     handleRoomRequest(message);
-                }
-                else {
+                } else if (content != null && content.startsWith("CREATE_GROUP:")) {
+                    handleCreateGroup(message);
+                } else {
                     routeMessage(message);
                 }
             }
@@ -90,6 +91,12 @@ public class ClientHandler implements Runnable {
         ChatRoom globalRoom = ChatRoomService.getInstance().getRoom(msg.getChatId());
         if (globalRoom instanceof GroupChat group) {
             group.inviteMember(currentUser);
+
+            if (!group.getId().equals("global_room")) {
+                ChatRoomService.getInstance().saveGroup(group);
+            }
+
+            LOGGER.info("User " + currentUser.getName() + " joined & saved to group: " + group.getName());
         }
 
         broadcastNotificationToAll(msg);
@@ -99,14 +106,48 @@ public class ClientHandler implements Runnable {
         LOGGER.info("User registered in session: " + currentUser.getName());
     }
 
+    private void handleCreateGroup(Message msg) {
+        // Format payload: "CREATE_GROUP:NamaGrup"
+        String groupName = msg.getContent().substring("CREATE_GROUP:".length());
+
+        if (groupName.isEmpty()) return;
+
+        GroupChat newGroup = ChatRoomService.getInstance().createNewGroup(groupName, msg.getSender());
+
+        LOGGER.info("New group created: " + groupName + " by " + msg.getSender().getName());
+
+        broadcastRoomListUpdate();
+    }
+
     private void handleRoomRequest(Message msg) {
-        // Format data: "ROOMLIST:id1:name1,id2:name2"
-        StringBuilder sb = new StringBuilder("ROOMLIST:");
-
-        sb.append("global_room:Global Chat");
-
-        Message response = new TextMessage("SYSTEM", new User(), sb.toString());
+        // Kirim daftar room HANYA ke peminta
+        String payload = generateRoomListPayload();
+        Message response = new TextMessage("SYSTEM", new User(), payload);
         send(response);
+    }
+
+    /**
+     * Generate String: "ROOMLIST:id:name,id:name"
+     */
+    private String generateRoomListPayload() {
+        StringBuilder sb = new StringBuilder("ROOMLIST:");
+        Collection<ChatRoom> rooms = ChatRoomService.getInstance().getAllRooms();
+
+        boolean first = true;
+        for (ChatRoom room : rooms) {
+            if (room instanceof GroupChat group) {
+                if (!first) sb.append(",");
+                sb.append(group.getId()).append(":").append(group.getName());
+                first = false;
+            }
+        }
+        return sb.toString();
+    }
+
+    private void broadcastRoomListUpdate() {
+        String payload = generateRoomListPayload();
+        Message updateMsg = new TextMessage("SYSTEM", new User(), payload);
+        broadcastNotificationToAll(updateMsg);
     }
 
     private void routeMessage(Message msg) {

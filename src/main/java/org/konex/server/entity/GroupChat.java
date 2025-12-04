@@ -74,9 +74,12 @@ public class GroupChat implements ChatRoom, GroupManagement {
     @Override
     public void inviteMember(User u) {
         Objects.requireNonNull(u, "User cannot be null");
+
         if (members.stream().noneMatch(member -> sameUser(member, u))) {
             members.add(u);
             LOGGER.info(() -> String.format("%s joined group %s", safeName(u), name));
+        } else {
+            LOGGER.info(() -> String.format("%s is already in group %s", safeName(u), name));
         }
     }
 
@@ -104,6 +107,6 @@ public class GroupChat implements ChatRoom, GroupManagement {
         if (a == null || b == null) {
             return false;
         }
-        return Objects.equals(a.getUserId(), b.getUserId());
+        return Objects.equals(a.getPhoneNumber(), b.getPhoneNumber());
     }
 }

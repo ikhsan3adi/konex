@@ -9,7 +9,6 @@ import org.konex.common.model.User;
 import org.konex.server.database.DatabaseManager;
 import org.konex.server.entity.GroupChat;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -124,6 +123,10 @@ public class ChatRoomService {
             // Ignore
         }
         return null;
+    }
+
+    public java.util.Collection<ChatRoom> getAllRooms() {
+        return activeRooms.values();
     }
 
     public ChatRoom getRoom(String id) {
