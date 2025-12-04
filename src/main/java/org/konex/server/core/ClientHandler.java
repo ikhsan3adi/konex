@@ -402,7 +402,17 @@ public class ClientHandler implements Runnable {
 
             User sender = new User();
             sender.setPhoneNumber(senderPhone);
-            sender.setName(senderName);
+
+            Document userDoc = DatabaseManager.getInstance().getCollection("users")
+                    .find(Filters.eq("phoneNumber", senderPhone))
+                    .first();
+
+            if (userDoc != null) {
+                sender.setName(userDoc.getString("name"));
+                sender.setProfileImage(userDoc.getString("profileImage"));
+            } else {
+                sender.setName(senderName);
+            }
 
             Message msg;
             if ("TEXT".equals(type)) {
