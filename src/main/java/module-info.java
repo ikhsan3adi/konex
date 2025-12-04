@@ -13,6 +13,7 @@ module org.konex.konex {
     requires com.fasterxml.jackson.databind;
     requires java.dotenv;
     requires java.logging;
+    requires annotations;
 
     opens org.konex to javafx.fxml;
     exports org.konex;

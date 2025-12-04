@@ -8,6 +8,7 @@ import org.konex.common.interfaces.ChatRoom;
 import org.konex.common.model.User;
 import org.konex.server.database.DatabaseManager;
 import org.konex.server.entity.GroupChat;
+import org.konex.server.entity.PrivateChat;
 
 import java.util.List;
 import java.util.Map;
@@ -24,8 +25,8 @@ public class ChatRoomService {
 
     private ChatRoomService() {
         createGlobalRoom();
-
         loadGroupsFromDB();
+        loadPrivateChatsFromDB();
     }
 
     public static synchronized ChatRoomService getInstance() {
@@ -81,6 +82,27 @@ public class ChatRoomService {
         }
     }
 
+    private void loadPrivateChatsFromDB() {
+        try {
+            MongoCollection<Document> collection = DatabaseManager.getInstance().getCollection("groups");
+            for (Document doc : collection.find(Filters.eq("type", "PRIVATE"))) {
+                String id = doc.getString("_id");
+                String p1 = doc.getString("user1_phone");
+                String p2 = doc.getString("user2_phone");
+
+                User u1 = findUserByPhone(p1);
+                User u2 = findUserByPhone(p2);
+
+                if (u1 != null && u2 != null) {
+                    PrivateChat pc = new PrivateChat(id, u1, u2);
+                    activeRooms.put(id, pc);
+                }
+            }
+        } catch (Exception _) {
+            // Ignore
+        }
+    }
+    
     public void saveGroup(GroupChat group) {
         try {
             List<String> memberPhones = group.getMembers().stream()
@@ -119,7 +141,7 @@ public class ChatRoomService {
                 u.setProfileImage(doc.getString("profileImage"));
                 return u;
             }
-        } catch (Exception e) {
+        } catch (Exception _) {
             // Ignore
         }
         return null;
@@ -138,5 +160,48 @@ public class ChatRoomService {
         GroupChat newGroup = new GroupChat(newId, name, admin);
         saveGroup(newGroup);
         return newGroup;
+    }
+
+    public ChatRoom getOrCreatePrivateChat(User user1, User user2) {
+        String p1 = user1.getPhoneNumber();
+        String p2 = user2.getPhoneNumber();
+
+        String privateId;
+        if (p1.compareTo(p2) < 0) {
+            privateId = "private_" + p1 + "_" + p2;
+        } else {
+            privateId = "private_" + p2 + "_" + p1;
+        }
+
+        if (activeRooms.containsKey(privateId)) {
+            return activeRooms.get(privateId);
+        }
+
+        PrivateChat newChat = new PrivateChat(privateId, user1, user2);
+
+        savePrivateChat(newChat);
+        activeRooms.put(privateId, newChat);
+
+        return newChat;
+    }
+
+    public void savePrivateChat(org.konex.server.entity.PrivateChat chat) {
+        try {
+            Document doc = new Document()
+                    .append("_id", chat.getId())
+                    .append("type", "PRIVATE")
+                    .append("user1_phone", chat.getFirstParticipant().getPhoneNumber())
+                    .append("user2_phone", chat.getSecondParticipant().getPhoneNumber());
+
+            DatabaseManager.getInstance().getCollection("groups").updateOne(
+                    Filters.eq("_id", chat.getId()),
+                    new Document("$set", doc),
+                    new UpdateOptions().upsert(true)
+            );
+
+            LOGGER.info("Private Chat saved: " + chat.getId());
+        } catch (Exception e) {
+            LOGGER.severe("Failed save private chat: " + e.getMessage());
+        }
     }
 }

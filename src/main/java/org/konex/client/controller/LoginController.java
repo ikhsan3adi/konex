@@ -65,7 +65,7 @@ public class LoginController {
                 if (uploadPlaceholder != null) {
                     uploadPlaceholder.setVisible(false);
                 }
-            } catch (IOException e) {
+            } catch (IOException _) {
                 showAlert("Error", "Gagal membaca file gambar.");
             }
         }
@@ -109,26 +109,31 @@ public class LoginController {
                     .setProfileImage(base64ProfileImage)
                     .build();
 
-            SocketClient client = SocketClient.getInstance();
-            client.connect("localhost", 12345);
-
-            client.setLoginCallback((success, message) -> {
-                if (success) {
-                    try {
-                        loadChatView();
-                    } catch (IOException e) {
-                        e.printStackTrace();
-                    }
-                } else {
-                    showAlert("Login Gagal", message);
-                    client.closeConnection();
-                }
-            });
+            SocketClient client = getSocketClient();
 
             client.sendAuthRequest(user);
-        } catch (IOException e) {
+        } catch (IOException _) {
             showAlert("Connection Failed", "Cannot connect to server.");
         }
+    }
+
+    private SocketClient getSocketClient() throws IOException {
+        SocketClient client = SocketClient.getInstance();
+        client.connect("localhost", 12345);
+
+        client.setLoginCallback((success, message) -> {
+            if (success) {
+                try {
+                    loadChatView();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            } else {
+                showAlert("Login Gagal", message);
+                client.closeConnection();
+            }
+        });
+        return client;
     }
 
     private void loadChatView() throws IOException {

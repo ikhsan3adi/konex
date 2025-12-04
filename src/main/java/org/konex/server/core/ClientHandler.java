@@ -76,6 +76,8 @@ public class ClientHandler implements Runnable {
                     handleCreateGroup(message);
                 } else if (content != null && content.startsWith("/kick")) {
                     handleKickCommand(message);
+                } else if (content != null && content.startsWith("REQ_PRIVATE:")) {
+                    handlePrivateChatRequest(message);
                 } else {
                     routeMessage(message);
                 }
@@ -196,6 +198,22 @@ public class ClientHandler implements Runnable {
                 sb.append(group.getId()).append(":").append(group.getName());
                 first = false;
             }
+            // PRIVATE
+            else if (room instanceof PrivateChat pc) {
+                User other = null;
+                if (pc.getFirstParticipant().getPhoneNumber().equals(currentUser.getPhoneNumber())) {
+                    other = pc.getSecondParticipant();
+                } else if (pc.getSecondParticipant().getPhoneNumber().equals(currentUser.getPhoneNumber())) {
+                    other = pc.getFirstParticipant();
+                }
+
+                if (other != null) {
+                    if (!first) sb.append(",");
+
+                    sb.append(pc.getId()).append(":").append(other.getName());
+                    first = false;
+                }
+            }
         }
         return sb.toString();
     }
@@ -207,6 +225,34 @@ public class ClientHandler implements Runnable {
         for (ClientHandler client : SESSIONS.values()) {
             client.sendResponse(response);
         }
+    }
+
+    private void handlePrivateChatRequest(Message msg) {
+        String targetPhone = msg.getContent().substring("REQ_PRIVATE:".length());
+
+        Document targetDoc = DatabaseManager.getInstance().getCollection("users")
+                .find(Filters.eq("phoneNumber", targetPhone)).first();
+
+        if (targetDoc == null) return;
+
+        User targetUser = new User();
+        targetUser.setPhoneNumber(targetDoc.getString("phoneNumber"));
+        targetUser.setName(targetDoc.getString("name"));
+        targetUser.setProfileImage(targetDoc.getString("profileImage"));
+
+        ChatRoom room = ChatRoomService.getInstance().getOrCreatePrivateChat(msg.getSender(), targetUser);
+
+        // refresh sidebar (Requester & Target)
+        ClientHandler targetSession = SESSIONS.get(targetPhone);
+        if (targetSession != null) {
+            targetSession.broadcastRoomListUpdate();
+        }
+        this.broadcastRoomListUpdate();
+
+        // Format: "OPEN_PRIVATE:chatId:TargetName"
+        String responsePayload = "OPEN_PRIVATE:" + room.getId() + ":" + targetUser.getName();
+        Response<String> resp = Response.success("SYSTEM_CMD", responsePayload);
+        sendResponse(resp);
     }
 
     private void routeMessage(Message msg) {

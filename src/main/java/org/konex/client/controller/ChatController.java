@@ -21,6 +21,7 @@ import javafx.stage.FileChooser;
 import javafx.stage.Stage;
 import org.konex.client.ClientApp;
 import org.konex.client.service.SocketClient;
+import org.konex.common.constants.Constants;
 import org.konex.common.interfaces.ChatObserver;
 import org.konex.common.model.*;
 
@@ -50,7 +51,7 @@ public class ChatController implements ChatObserver {
     private SocketClient client;
     private User currentUser;
 
-    private String currentChatId = "global_room";
+    private String currentChatId = Constants.GLOBAL_ROOM_CHAT_ID;
     private String currentChatName = "Global Chat";
 
     private final Map<String, String> roomMap = new HashMap<>();
@@ -85,6 +86,10 @@ public class ChatController implements ChatObserver {
             }
         });
 
+        setupListViewStyle();
+    }
+
+    private void setupListViewStyle() {
         chatList.setCellFactory(lv -> new ListCell<String>() {
             @Override
             protected void updateItem(String item, boolean empty) {
@@ -168,6 +173,18 @@ public class ChatController implements ChatObserver {
                 handleKickedEvent(kickedChatId);
             } else if ("ERROR".equals(command)) {
                 showAlert("Error", "Gagal: " + response.getMessage());
+            } else if ("SYSTEM".equals(command)) {
+                String payload = (String) response.getData();
+                if (payload.startsWith("OPEN_PRIVATE:")) {
+                    // Format: OPEN_PRIVATE:chatId:TargetName
+                    String[] parts = payload.split(":");
+                    String chatId = parts[1];
+                    String chatName = parts[2];
+
+                    joinRoom(chatId, chatName);
+
+                    requestRoomList();
+                }
             }
         });
     }
@@ -176,7 +193,6 @@ public class ChatController implements ChatObserver {
         String content = msg.getContent();
 
         if (!msg.getChatId().equals(currentChatId)) {
-            // (Opsional: Logic notifikasi badge bisa ditaruh sini)
             return;
         }
 
@@ -285,7 +301,7 @@ public class ChatController implements ChatObserver {
 
                 Message msg = MessageFactory.createMessage(currentChatId, currentUser, caption, base64Image);
                 client.sendMessage(msg);
-            } catch (IOException e) {
+            } catch (IOException _) {
                 showAlert("Error", "Gagal membaca file gambar.");
             }
         }
@@ -294,8 +310,6 @@ public class ChatController implements ChatObserver {
     @FXML
     protected void onLogoutClick() {
         try {
-            // SocketClient.getInstance().disconnect();
-
             javafx.fxml.FXMLLoader fxmlLoader = new javafx.fxml.FXMLLoader(ClientApp.class.getResource("login-view.fxml"));
             javafx.scene.Scene scene = new javafx.scene.Scene(fxmlLoader.load(), 400, 300);
             javafx.stage.Stage stage = (javafx.stage.Stage) headerLabel.getScene().getWindow();
@@ -351,7 +365,7 @@ public class ChatController implements ChatObserver {
                 } else {
                     contentNode = imageView;
                 }
-            } catch (Exception e) {
+            } catch (Exception _) {
                 contentNode = new Label("⚠️ Gambar Rusak");
             }
         } else {
@@ -401,6 +415,17 @@ public class ChatController implements ChatObserver {
 
             Node avatarNode = createAvatar(msg.getSender());
 
+            // Kirim Request Private Chat
+            avatarNode.setCursor(Cursor.HAND);
+            avatarNode.setOnMouseClicked(e -> {
+                if (!msg.getSender().getPhoneNumber().equals(currentUser.getPhoneNumber())) {
+                    // Kirim Request Private Chat
+                    Message req = MessageFactory
+                            .createMessage("SYSTEM", currentUser, "REQ_PRIVATE:" + msg.getSender().getPhoneNumber());
+                    client.sendMessage(req);
+                }
+            });
+
             row.getChildren().addAll(avatarNode, bubble);
         }
 
@@ -419,7 +444,8 @@ public class ChatController implements ChatObserver {
                 circle.setStroke(Color.LIGHTGRAY);
                 circle.setFill(new javafx.scene.paint.ImagePattern(img));
                 return circle;
-            } catch (Exception ignored) {
+            } catch (Exception _) {
+                // do nothing
             }
         }
 
@@ -431,8 +457,7 @@ public class ChatController implements ChatObserver {
         text.setFill(Color.WHITE);
         text.setStyle("-fx-font-weight: bold;");
 
-        StackPane stack = new StackPane(bg, text);
-        return stack;
+        return new StackPane(bg, text);
     }
 
     private void showFullscreenImage(Image image) {
