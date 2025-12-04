@@ -66,7 +66,9 @@ public class ClientHandler implements Runnable {
             if (payload instanceof Message message) {
                 String content = message.getContent();
 
-                if ("JOINED".equals(content)) {
+                if (content != null && content.startsWith("AUTH_REQUEST:")) {
+                    handleAuthRequest(message);
+                } else if ("JOINED".equals(content)) {
                     handleJoin(message);
                 } else if ("REQ_ROOMS".equals(content)) {
                     handleRoomRequest(message);
@@ -77,6 +79,50 @@ public class ClientHandler implements Runnable {
                 } else {
                     routeMessage(message);
                 }
+            }
+        }
+    }
+
+    private void handleAuthRequest(Message msg) {
+        // format: "AUTH_REQUEST:password"
+        String content = msg.getContent();
+        String passwordInput = content.substring("AUTH_REQUEST:".length());
+
+        User requestUser = msg.getSender();
+        String phone = requestUser.getPhoneNumber();
+
+        Document userDoc = DatabaseManager.getInstance().getCollection("users")
+                .find(Filters.eq("phoneNumber", phone))
+                .first();
+
+        if (userDoc == null) {
+            requestUser.setPassword(passwordInput);
+
+            saveUserToDB(requestUser);
+
+            this.currentUser = requestUser;
+            SESSIONS.put(phone, this);
+
+            LOGGER.info("New User Registered: " + requestUser.getName());
+            sendResponse(Response.success("LOGIN_SUCCESS", requestUser));
+        } else {
+            String dbPassword = userDoc.getString("password");
+
+            if (dbPassword != null && dbPassword.equals(passwordInput)) {
+                User dbUser = new User();
+                dbUser.setPhoneNumber(phone);
+                dbUser.setName(userDoc.getString("name"));
+                dbUser.setProfileImage(userDoc.getString("profileImage"));
+                dbUser.setPassword(dbPassword);
+
+                this.currentUser = dbUser;
+                SESSIONS.put(phone, this);
+
+                LOGGER.info("User Logged In: " + dbUser.getName());
+                sendResponse(Response.success("LOGIN_SUCCESS", dbUser));
+            } else {
+                LOGGER.warning("Login Failed (Wrong Password): " + phone);
+                sendResponse(Response.error("LOGIN_FAILED", "Password Salah!"));
             }
         }
     }
@@ -304,6 +350,7 @@ public class ClientHandler implements Runnable {
             Document doc = new Document()
                     .append("phoneNumber", user.getPhoneNumber())
                     .append("name", user.getName())
+                    .append("password", user.getPassword())
                     .append("profileImage", user.getProfileImage());
 
             DatabaseManager.getInstance().getCollection("users").updateOne(
