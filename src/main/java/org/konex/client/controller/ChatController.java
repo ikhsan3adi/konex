@@ -93,16 +93,10 @@ public class ChatController implements ChatObserver {
         client.sendMessage(reqMsg);
     }
 
-    @Deprecated
-    @Override
-    public void onNewMessage(Message msg) {
-
-    }
-
     @Override
     public void onResponseReceived(Response<?> response) {
         Platform.runLater(() -> {
-            System.out.println(response.toString());
+            String command = response.getCommand();
 
             if ("ROOMLIST".equals(response.getCommand()) && response.isSuccess()) {
                 String rawPayload = (String) response.getData();
@@ -110,6 +104,11 @@ public class ChatController implements ChatObserver {
             } else if ("NEW_MESSAGE".equals(response.getCommand()) && response.isSuccess()) {
                 Message msg = (Message) response.getData();
                 processIncomingMessage(msg);
+            } else if ("KICKED".equals(command)) {
+                String kickedChatId = (String) response.getData();
+                handleKickedEvent(kickedChatId);
+            } else if ("ERROR".equals(command)) {
+                showAlert("Error", "Gagal: " + response.getMessage());
             }
         });
     }
@@ -153,6 +152,19 @@ public class ChatController implements ChatObserver {
                 chatList.getItems().add(name);
             }
         }
+    }
+
+    private void handleKickedEvent(String kickedChatId) {
+        if (currentChatId.equals(kickedChatId)) {
+            messageContainer.getChildren().clear();
+            headerLabel.setText("Global Chat Room");
+            currentChatId = "global_room";
+            joinRoom("global_room", "Global Chat");
+
+            showAlert("Info", "Anda telah dikeluarkan dari grup ini.");
+        }
+
+        requestRoomList();
     }
 
     @FXML

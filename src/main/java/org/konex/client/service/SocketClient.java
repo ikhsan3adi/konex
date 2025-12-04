@@ -70,9 +70,7 @@ public class SocketClient {
         try {
             while (running && !socket.isClosed()) {
                 Object data = input.readObject();
-                if (data instanceof Message) {
-                    notifyObservers((Message) data);
-                } else if (data instanceof Response) {
+                if (data instanceof Response) {
                     notifyObservers((Response<?>) data);
                 }
             }
@@ -87,12 +85,6 @@ public class SocketClient {
 
     public void removeObserver(ChatObserver observer) {
         observers.remove(observer);
-    }
-
-    private void notifyObservers(Message msg) {
-        for (ChatObserver observer : observers) {
-            observer.onNewMessage(msg);
-        }
     }
 
     private void notifyObservers(Response<?> response) {

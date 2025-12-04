@@ -9,6 +9,7 @@ import org.konex.common.interfaces.ChatRoom;
 import org.konex.common.model.*;
 import org.konex.server.database.DatabaseManager;
 import org.konex.server.entity.GroupChat;
+import org.konex.server.entity.GroupProxy;
 import org.konex.server.entity.PrivateChat;
 import org.konex.server.service.ChatRoomService;
 
@@ -71,6 +72,8 @@ public class ClientHandler implements Runnable {
                     handleRoomRequest(message);
                 } else if (content != null && content.startsWith("CREATE_GROUP:")) {
                     handleCreateGroup(message);
+                } else if (content != null && content.startsWith("/kick")) {
+                    handleKickCommand(message);
                 } else {
                     routeMessage(message);
                 }
@@ -160,6 +163,14 @@ public class ClientHandler implements Runnable {
             return;
         }
 
+        if (room instanceof GroupChat group) {
+            if (!group.isMember(msg.getSender())) {
+                Response<String> errorResp = Response.error("ERROR", "Anda bukan anggota grup ini.");
+                sendResponse(errorResp);
+                return;
+            }
+        }
+
         room.sendMessage(msg);
 
         if (room instanceof GroupChat group) {
@@ -186,6 +197,67 @@ public class ClientHandler implements Runnable {
         for (ClientHandler client : SESSIONS.values()) {
             client.sendResponse(response);
         }
+    }
+
+    private void handleKickCommand(Message msg) {
+        // Format perintah: "/kick <no hp>"
+        String[] parts = msg.getContent().split(" ");
+
+        if (parts.length < 2) {
+            sendSystemMessageToClient("Format salah. Gunakan: /kick [NoHP]", msg.getSender());
+            return;
+        }
+
+        String targetPhone = parts[1];
+        String chatId = msg.getChatId();
+
+        ChatRoom room = ChatRoomService.getInstance().getRoom(chatId);
+
+        if (room instanceof GroupChat group) {
+            // PROXY PATTERN
+            GroupProxy proxy = new GroupProxy(group);
+
+            User targetUser = new User();
+            targetUser.setPhoneNumber(targetPhone);
+
+            try {
+                // cek msg.getSender() adalah Admin
+                proxy.kickMember(targetUser, msg.getSender());
+
+                ChatRoomService.getInstance().saveGroup(group);
+
+                ClientHandler victimSession = SESSIONS.get(targetPhone);
+                if (victimSession != null) {
+                    Response<String> kickNotice = Response.success("KICKED", chatId);
+                    victimSession.sendResponse(kickNotice);
+                }
+
+                sendSystemMessageToClient("Sukses mengeluarkan user: " + targetPhone, msg.getSender());
+
+                Message announcement = new TextMessage(chatId, msg.getSender(), "telah mengeluarkan anggota " + targetPhone);
+                routeMessage(announcement);
+
+                LOGGER.info("KICK SUCCESS: " + targetPhone + " removed from " + group.getName() + " by " + msg.getSender().getName());
+
+            } catch (SecurityException e) {
+                LOGGER.warning("KICK FAILED: " + msg.getSender().getName() + " tried to kick but is not admin.");
+                sendSystemMessageToClient("GAGAL: Anda bukan Admin grup ini!", msg.getSender());
+            }
+        } else {
+            sendSystemMessageToClient("Perintah ini hanya berlaku di Grup.", msg.getSender());
+        }
+    }
+
+    private void sendSystemMessageToClient(String text, User recipient) {
+        User sysUser = new User();
+        sysUser.setName("SYSTEM");
+        sysUser.setPhoneNumber("0000");
+
+        Message sysMsg = new TextMessage("SYSTEM_NOTIF", sysUser, text);
+
+        Response<Message> response = Response.success("NEW_MESSAGE", sysMsg);
+
+        this.sendResponse(response);
     }
 
     private void shutdown() {
