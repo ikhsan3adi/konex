@@ -5,11 +5,15 @@ import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Sorts;
 import com.mongodb.client.model.UpdateOptions;
 import org.bson.Document;
+import org.konex.common.interfaces.ChatRoom;
 import org.konex.common.model.ImageMessage;
 import org.konex.common.model.Message;
 import org.konex.common.model.TextMessage;
 import org.konex.common.model.User;
 import org.konex.server.database.DatabaseManager;
+import org.konex.server.entity.GroupChat;
+import org.konex.server.entity.PrivateChat;
+import org.konex.server.service.ChatRoomService;
 
 import java.io.EOFException;
 import java.io.IOException;
@@ -17,20 +21,21 @@ import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.net.Socket;
 import java.util.Date;
-import java.util.List;
-import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
 public class ClientHandler implements Runnable {
     private static final Logger LOGGER = Logger.getLogger(ClientHandler.class.getName());
-    private static final List<ClientHandler> CLIENTS = new CopyOnWriteArrayList<>();
+
+    // SESSION MANAGER: Key = No HP, Value = ClientHandler
+    private static final Map<String, ClientHandler> SESSIONS = new ConcurrentHashMap<>();
 
     private final Socket socket;
     private ObjectInputStream input;
     private ObjectOutputStream output;
     private volatile boolean running = true;
-
     private User currentUser;
 
     public ClientHandler(Socket socket) {
@@ -43,8 +48,9 @@ public class ClientHandler implements Runnable {
             output = new ObjectOutputStream(socket.getOutputStream());
             output.flush();
             input = new ObjectInputStream(socket.getInputStream());
-            CLIENTS.add(this);
-            LOGGER.info(() -> "Client handler started for " + socket.getRemoteSocketAddress());
+
+            LOGGER.info(() -> "Client connected: " + socket.getRemoteSocketAddress());
+
             listenLoop();
         } catch (EOFException eof) {
             LOGGER.info("Client disconnected cleanly");
@@ -59,74 +65,100 @@ public class ClientHandler implements Runnable {
         while (running && !socket.isClosed()) {
             Object payload = input.readObject();
             if (payload instanceof Message message) {
-                if ("JOINED".equals(message.getContent())) {
+                String content = message.getContent();
+
+                if ("JOINED".equals(content)) {
                     handleJoin(message);
-                } else {
-                    broadcast(message);
                 }
-            } else {
-                LOGGER.warning("Received unknown payload type; ignoring");
+                else if ("REQ_ROOMS".equals(content)) {
+                    handleRoomRequest(message);
+                }
+                else {
+                    routeMessage(message);
+                }
             }
-        }
-    }
-
-    private void broadcast(Message msg) {
-        saveToDatabase(msg);
-        broadcastNotification(msg);
-    }
-
-    private void broadcastNotification(Message msg) {
-        for (ClientHandler client : CLIENTS) {
-            client.send(msg);
         }
     }
 
     private void handleJoin(Message msg) {
         this.currentUser = msg.getSender();
 
-        saveUserToDB(msg.getSender());
+        SESSIONS.put(currentUser.getPhoneNumber(), this);
 
-        broadcastNotification(msg);
+        saveUserToDB(currentUser);
 
-        loadAndSendHistory("global_room");
+        ChatRoom globalRoom = ChatRoomService.getInstance().getRoom(msg.getChatId());
+        if (globalRoom instanceof GroupChat group) {
+            group.inviteMember(currentUser);
+        }
+
+        broadcastNotificationToAll(msg);
+
+        loadAndSendHistory(msg.getChatId());
+
+        LOGGER.info("User registered in session: " + currentUser.getName());
     }
 
-    private void loadAndSendHistory(String chatId) {
-        try {
-            FindIterable<Document> docs = DatabaseManager.getInstance()
-                    .getCollection("messages")
-                    .find(Filters.eq("chatId", chatId))
-                    .sort(Sorts.ascending("timestamp"));
+    private void handleRoomRequest(Message msg) {
+        // Format data: "ROOMLIST:id1:name1,id2:name2"
+        StringBuilder sb = new StringBuilder("ROOMLIST:");
 
-            for (Document doc : docs) {
-                Message msg = documentToMessage(doc);
-                if (msg != null) {
-                    this.send(msg);
-                }
+        sb.append("global_room:Global Chat");
+
+        Message response = new TextMessage("SYSTEM", new User(), sb.toString());
+        send(response);
+    }
+
+    private void routeMessage(Message msg) {
+        saveToDatabase(msg);
+
+        ChatRoom room = ChatRoomService.getInstance().getRoom(msg.getChatId());
+
+        if (room == null) {
+            LOGGER.warning("Room not found: " + msg.getChatId());
+            return;
+        }
+
+        room.sendMessage(msg);
+
+        if (room instanceof GroupChat group) {
+            for (User member : group.getMembers()) {
+                sendToTarget(member.getPhoneNumber(), msg);
             }
-            LOGGER.info("History sent to client for chat: " + chatId);
-        } catch (Exception e) {
-            LOGGER.log(Level.SEVERE, "Failed to load history", e);
+        } else if (room instanceof PrivateChat privateChat) {
+            sendToTarget(privateChat.getFirstParticipant().getPhoneNumber(), msg);
+            sendToTarget(privateChat.getSecondParticipant().getPhoneNumber(), msg);
         }
     }
 
-    private void saveUserToDB(User user) {
-        try {
-            Document doc = new Document()
-                    .append("phoneNumber", user.getPhoneNumber())
-                    .append("name", user.getName())
-                    .append("profileImage", user.getProfileImage());
-
-            // Upsert
-            DatabaseManager.getInstance().getCollection("users").updateOne(
-                    Filters.eq("phoneNumber", user.getPhoneNumber()),
-                    new Document("$set", doc),
-                    new UpdateOptions().upsert(true)
-            );
-            LOGGER.info("User saved/updated: " + user.getName());
-        } catch (Exception e) {
-            LOGGER.warning("Failed to save user: " + e.getMessage());
+    private void sendToTarget(String phoneNumber, Message msg) {
+        ClientHandler targetClient = SESSIONS.get(phoneNumber);
+        if (targetClient != null) {
+            targetClient.send(msg);
         }
+    }
+
+    private void broadcastNotificationToAll(Message msg) {
+        for (ClientHandler client : SESSIONS.values()) {
+            client.send(msg);
+        }
+    }
+
+    private void shutdown() {
+        running = false;
+
+        if (currentUser != null) {
+            SESSIONS.remove(currentUser.getPhoneNumber());
+
+            LOGGER.info(currentUser.getName() + " has left.");
+
+            Message leftMsg = new TextMessage("global_room", currentUser, "LEFT");
+            broadcastNotificationToAll(leftMsg);
+        }
+
+        closeQuietly(input);
+        closeQuietly(output);
+        closeQuietly(socket);
     }
 
     private void saveToDatabase(Message msg) {
@@ -145,27 +177,42 @@ public class ClientHandler implements Runnable {
                 doc.append("base64Data", imgMsg.getBase64Data());
             }
 
-            DatabaseManager.getInstance()
-                    .getCollection("messages")
-                    .insertOne(doc);
-
-            LOGGER.info("Message saved to MongoDB: " + msg.getChatId());
+            DatabaseManager.getInstance().getCollection("messages").insertOne(doc);
         } catch (Exception e) {
-            LOGGER.log(Level.SEVERE, "Failed to save message to DB", e);
+            LOGGER.log(Level.SEVERE, "DB Error", e);
         }
     }
 
-    private void send(Message msg) {
+    private void saveUserToDB(User user) {
         try {
-            synchronized (this) {
-                if (output != null) {
-                    output.writeObject(msg);
-                    output.flush();
-                    output.reset();
-                }
+            Document doc = new Document()
+                    .append("phoneNumber", user.getPhoneNumber())
+                    .append("name", user.getName())
+                    .append("profileImage", user.getProfileImage());
+
+            DatabaseManager.getInstance().getCollection("users").updateOne(
+                    Filters.eq("phoneNumber", user.getPhoneNumber()),
+                    new Document("$set", doc),
+                    new UpdateOptions().upsert(true)
+            );
+        } catch (Exception e) {
+            LOGGER.warning("Failed to save user: " + e.getMessage());
+        }
+    }
+
+    private void loadAndSendHistory(String chatId) {
+        try {
+            FindIterable<Document> docs = DatabaseManager.getInstance()
+                    .getCollection("messages")
+                    .find(Filters.eq("chatId", chatId))
+                    .sort(Sorts.ascending("timestamp"));
+
+            for (Document doc : docs) {
+                Message msg = documentToMessage(doc);
+                if (msg != null) this.send(msg);
             }
-        } catch (IOException e) {
-            LOGGER.log(Level.WARNING, "Failed to send message to client", e);
+        } catch (Exception e) {
+            LOGGER.log(Level.SEVERE, "Failed load history", e);
         }
     }
 
@@ -195,44 +242,28 @@ public class ClientHandler implements Runnable {
             msg.setDate(date);
             return msg;
         } catch (Exception e) {
-            LOGGER.warning("Error parsing message document: " + e.getMessage());
             return null;
         }
     }
 
-    private void shutdown() {
-        running = false;
-        CLIENTS.remove(this);
-
-        if (currentUser != null) {
-            LOGGER.info(currentUser.getName() + " has left the chat.");
-
-            Message leftMsg = new TextMessage("global_room", currentUser, "LEFT");
-
-            broadcastNotification(leftMsg);
+    private void send(Message msg) {
+        try {
+            synchronized (this) {
+                if (output != null) {
+                    output.writeObject(msg);
+                    output.flush();
+                    output.reset();
+                }
+            }
+        } catch (IOException _) {
         }
-
-        closeQuietly(input);
-        closeQuietly(output);
-        closeQuietly(socket);
-        LOGGER.info(() -> "Client handler shutdown for " + socket.getRemoteSocketAddress());
     }
 
     private void closeQuietly(Object resource) {
-        if (resource instanceof ObjectInputStream ois) {
+        if (resource instanceof AutoCloseable c) {
             try {
-                ois.close();
-            } catch (IOException ignored) {
-            }
-        } else if (resource instanceof ObjectOutputStream oos) {
-            try {
-                oos.close();
-            } catch (IOException ignored) {
-            }
-        } else if (resource instanceof Socket s) {
-            try {
-                s.close();
-            } catch (IOException ignored) {
+                c.close();
+            } catch (Exception ignored) {
             }
         }
     }
