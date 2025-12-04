@@ -6,10 +6,7 @@ import com.mongodb.client.model.Sorts;
 import com.mongodb.client.model.UpdateOptions;
 import org.bson.Document;
 import org.konex.common.interfaces.ChatRoom;
-import org.konex.common.model.ImageMessage;
-import org.konex.common.model.Message;
-import org.konex.common.model.TextMessage;
-import org.konex.common.model.User;
+import org.konex.common.model.*;
 import org.konex.server.database.DatabaseManager;
 import org.konex.server.entity.GroupChat;
 import org.konex.server.entity.PrivateChat;
@@ -120,10 +117,10 @@ public class ClientHandler implements Runnable {
     }
 
     private void handleRoomRequest(Message msg) {
-        // Kirim daftar room HANYA ke peminta
         String payload = generateRoomListPayload();
-        Message response = new TextMessage("SYSTEM", new User(), payload);
-        send(response);
+        Response<String> response = Response.success("ROOMLIST", payload);
+
+        sendResponse(response);
     }
 
     /**
@@ -146,8 +143,11 @@ public class ClientHandler implements Runnable {
 
     private void broadcastRoomListUpdate() {
         String payload = generateRoomListPayload();
-        Message updateMsg = new TextMessage("SYSTEM", new User(), payload);
-        broadcastNotificationToAll(updateMsg);
+        Response<String> response = Response.success("ROOMLIST", payload);
+
+        for (ClientHandler client : SESSIONS.values()) {
+            client.sendResponse(response);
+        }
     }
 
     private void routeMessage(Message msg) {
@@ -175,13 +175,16 @@ public class ClientHandler implements Runnable {
     private void sendToTarget(String phoneNumber, Message msg) {
         ClientHandler targetClient = SESSIONS.get(phoneNumber);
         if (targetClient != null) {
-            targetClient.send(msg);
+            Response<Message> response = Response.success("NEW_MESSAGE", msg);
+            targetClient.sendResponse(response);
         }
     }
 
     private void broadcastNotificationToAll(Message msg) {
+        Response<Message> response = Response.success("NEW_MESSAGE", msg);
+
         for (ClientHandler client : SESSIONS.values()) {
-            client.send(msg);
+            client.sendResponse(response);
         }
     }
 
@@ -250,7 +253,10 @@ public class ClientHandler implements Runnable {
 
             for (Document doc : docs) {
                 Message msg = documentToMessage(doc);
-                if (msg != null) this.send(msg);
+                if (msg != null) {
+                    Response<Message> response = Response.success("NEW_MESSAGE", msg);
+                    this.sendResponse(response);
+                }
             }
         } catch (Exception e) {
             LOGGER.log(Level.SEVERE, "Failed load history", e);
@@ -297,6 +303,19 @@ public class ClientHandler implements Runnable {
                 }
             }
         } catch (IOException _) {
+        }
+    }
+
+    private void sendResponse(Response<?> response) {
+        try {
+            synchronized (this) {
+                if (output != null) {
+                    output.writeObject(response);
+                    output.flush();
+                    output.reset();
+                }
+            }
+        } catch (IOException ignored) {
         }
     }
 

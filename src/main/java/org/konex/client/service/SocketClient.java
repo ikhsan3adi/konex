@@ -3,6 +3,7 @@ package org.konex.client.service;
 import org.konex.common.interfaces.ChatObserver;
 import org.konex.common.model.Message;
 import org.konex.common.model.MessageFactory;
+import org.konex.common.model.Response;
 import org.konex.common.model.User;
 
 import java.io.IOException;
@@ -71,6 +72,8 @@ public class SocketClient {
                 Object data = input.readObject();
                 if (data instanceof Message) {
                     notifyObservers((Message) data);
+                } else if (data instanceof Response) {
+                    notifyObservers((Response<?>) data);
                 }
             }
         } catch (IOException | ClassNotFoundException e) {
@@ -89,6 +92,12 @@ public class SocketClient {
     private void notifyObservers(Message msg) {
         for (ChatObserver observer : observers) {
             observer.onNewMessage(msg);
+        }
+    }
+
+    private void notifyObservers(Response<?> response) {
+        for (ChatObserver observer : observers) {
+            observer.onResponseReceived(response);
         }
     }
 

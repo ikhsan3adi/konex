@@ -14,10 +14,7 @@ import javafx.stage.FileChooser;
 import org.konex.client.ClientApp;
 import org.konex.client.service.SocketClient;
 import org.konex.common.interfaces.ChatObserver;
-import org.konex.common.model.ImageMessage;
-import org.konex.common.model.Message;
-import org.konex.common.model.MessageFactory;
-import org.konex.common.model.User;
+import org.konex.common.model.*;
 
 import java.io.ByteArrayInputStream;
 import java.io.File;
@@ -96,33 +93,46 @@ public class ChatController implements ChatObserver {
         client.sendMessage(reqMsg);
     }
 
+    @Deprecated
     @Override
     public void onNewMessage(Message msg) {
+
+    }
+
+    @Override
+    public void onResponseReceived(Response<?> response) {
         Platform.runLater(() -> {
-            String content = msg.getContent();
+            System.out.println(response.toString());
 
-            if (content.startsWith("ROOMLIST:")) {
-                updateSidebar(content);
-                return;
+            if ("ROOMLIST".equals(response.getCommand()) && response.isSuccess()) {
+                String rawPayload = (String) response.getData();
+                updateSidebar(rawPayload);
+            } else if ("NEW_MESSAGE".equals(response.getCommand()) && response.isSuccess()) {
+                Message msg = (Message) response.getData();
+                processIncomingMessage(msg);
             }
-
-            if (!msg.getChatId().equals(currentChatId)) {
-                // (Opsional: Disini bisa kasih notifikasi badge '1' di sidebar)
-                return;
-            }
-
-            if ("JOINED".equals(content)) {
-                addSystemLabel(msg.getSender().getName() + " bergabung.");
-                return;
-            }
-            if ("LEFT".equals(content)) {
-                addSystemLabel(msg.getSender().getName() + " keluar.");
-                return;
-            }
-
-            boolean isSelf = msg.getSender().getPhoneNumber().equals(currentUser.getPhoneNumber());
-            addBubbleChat(msg, isSelf);
         });
+    }
+
+    private void processIncomingMessage(Message msg) {
+        String content = msg.getContent();
+
+        if (!msg.getChatId().equals(currentChatId)) {
+            // (Opsional: Logic notifikasi badge bisa ditaruh sini)
+            return;
+        }
+
+        if ("JOINED".equals(content)) {
+            addSystemLabel(msg.getSender().getName() + " bergabung.");
+            return;
+        }
+        if ("LEFT".equals(content)) {
+            addSystemLabel(msg.getSender().getName() + " keluar.");
+            return;
+        }
+
+        boolean isSelf = msg.getSender().getPhoneNumber().equals(currentUser.getPhoneNumber());
+        addBubbleChat(msg, isSelf);
     }
 
     private void updateSidebar(String rawData) {
