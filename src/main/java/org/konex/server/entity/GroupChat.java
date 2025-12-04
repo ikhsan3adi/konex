@@ -34,16 +34,12 @@ public class GroupChat implements ChatRoom, GroupManagement {
         Objects.requireNonNull(msg, "Message cannot be null");
         history.add(msg);
         for (User member : members) {
-            deliver(member, msg);
+            LOGGER.info(() -> String.format(
+                    "Broadcasting message in group %s from %s to %s",
+                    name,
+                    safeName(msg.getSender()),
+                    safeName(member)));
         }
-    }
-
-    private void deliver(User member, Message msg) {
-        LOGGER.info(() -> String.format(
-                "Broadcasting message in group %s from %s to %s",
-                name,
-                safeName(msg.getSender()),
-                safeName(member)));
     }
 
     private String safeName(User user) {

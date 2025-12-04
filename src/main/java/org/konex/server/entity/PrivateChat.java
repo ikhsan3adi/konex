@@ -35,10 +35,7 @@ public class PrivateChat implements ChatRoom {
             return;
         }
         history.add(msg);
-        deliver(recipient, msg);
-    }
 
-    private void deliver(User recipient, Message msg) {
         LOGGER.info(() -> String.format(
                 "Delivering private message from %s to %s in chat %s",
                 safeName(msg.getSender()),
