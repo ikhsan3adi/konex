@@ -13,8 +13,11 @@ import java.io.ObjectOutputStream;
 import java.net.Socket;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 public class SocketClient {
+    private static final Logger LOGGER = Logger.getLogger(SocketClient.class.getName());
     private static SocketClient instance;
     private Socket socket;
     private ObjectOutputStream output;
@@ -79,7 +82,7 @@ public class SocketClient {
                 }
             }
         } catch (IOException e) {
-            System.err.println("Send Error: " + e.getMessage());
+            LOGGER.log(Level.SEVERE, "Send Error: {0}", e.getMessage());
         }
     }
 
@@ -87,7 +90,8 @@ public class SocketClient {
         running = false;
         try {
             if (socket != null) socket.close();
-        } catch (IOException e) {
+        } catch (IOException _) {
+            // Intentionally empty: socket close errors can be safely ignored during shutdown
         }
     }
 
@@ -115,8 +119,8 @@ public class SocketClient {
                     }
                 }
             }
-        } catch (IOException | ClassNotFoundException e) {
-            System.out.println("Disconnected.");
+        } catch (IOException | ClassNotFoundException _) {
+            LOGGER.info("Disconnected.");
         }
     }
 
