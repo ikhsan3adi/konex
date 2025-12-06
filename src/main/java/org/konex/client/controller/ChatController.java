@@ -54,6 +54,8 @@ public class ChatController implements ChatObserver {
     private String currentChatId = Constants.GLOBAL_ROOM_CHAT_ID;
     private String currentChatName = "Global Chat";
 
+    private static final String ERROR = "Error";
+
     private final Map<String, String> roomMap = new HashMap<>();
 
     private final SimpleDateFormat timeFormat = new SimpleDateFormat("HH:mm");
@@ -90,7 +92,7 @@ public class ChatController implements ChatObserver {
     }
 
     private void setupListViewStyle() {
-        chatList.setCellFactory(lv -> new ListCell<String>() {
+        chatList.setCellFactory(_ -> new ListCell<>() {
             @Override
             protected void updateItem(String item, boolean empty) {
                 super.updateItem(item, empty);
@@ -153,43 +155,71 @@ public class ChatController implements ChatObserver {
     }
 
     private void requestRoomList() {
-        Message reqMsg = MessageFactory.createMessage("SYSTEM", currentUser, "REQ_ROOMS");
+        Message reqMsg = MessageFactory.createMessage(Constants.SYSTEM_SENDER, currentUser, "REQ_ROOMS");
         client.sendMessage(reqMsg);
     }
 
     @Override
     public void onResponseReceived(Response<?> response) {
-        Platform.runLater(() -> {
-            String command = response.getCommand();
+        Platform.runLater(() -> handleUIResponse(response));
+    }
 
-            if ("ROOMLIST".equals(response.getCommand()) && response.isSuccess()) {
-                String rawPayload = (String) response.getData();
-                updateSidebar(rawPayload);
-            } else if ("NEW_MESSAGE".equals(response.getCommand()) && response.isSuccess()) {
-                Message msg = (Message) response.getData();
-                processIncomingMessage(msg);
-            } else if ("KICKED".equals(command)) {
-                String kickedChatId = (String) response.getData();
-                handleKickedEvent(kickedChatId);
-            } else if ("ERROR".equals(command)) {
-                showAlert("Error", "Gagal: " + response.getMessage());
-            } else if ("SYSTEM".equals(command)) {
-                String payload = (String) response.getData();
-                if (payload.startsWith("OPEN_PRIVATE:")) {
-                    // Format: OPEN_PRIVATE:chatId:TargetName
-                    String[] parts = payload.split(":");
-                    String chatId = parts[1];
-                    String chatName = parts[2];
+    private void handleUIResponse(Response<?> response) {
+        if (response == null) return;
 
-                    joinRoom(chatId, chatName);
+        String command = response.getCommand();
+        Object data = response.getData();
 
-                    requestRoomList();
-                }
+        if (data == null) {
+            handleNullData(command, response.getMessage());
+            return;
+        }
+
+        if (response.isSuccess()) {
+            handleSuccessCommand(command, data);
+        } else {
+            handleErrorCommand(command, response.getMessage());
+        }
+    }
+
+    private void handleNullData(String command, String message) {
+        if (Constants.CMD_ERROR.equals(command)) {
+            showAlert(ERROR, "Gagal: " + message);
+        }
+    }
+
+    private void handleSuccessCommand(String command, Object data) {
+        if (Constants.CMD_ROOMLIST.equals(command)) {
+            updateSidebar((String) data);
+        } else if (Constants.CMD_NEW_MESSAGE.equals(command)) {
+            processIncomingMessage((Message) data);
+        } else if (Constants.CMD_KICKED.equals(command)) {
+            handleKickedEvent((String) data);
+        } else if (Constants.SYSTEM_SENDER.equals(command)) {
+            handleSystemCommand((String) data);
+        }
+    }
+
+    private void handleErrorCommand(String command, String message) {
+        if (Constants.CMD_ERROR.equals(command)) {
+            showAlert(ERROR, "Gagal: " + message);
+        }
+    }
+
+    private void handleSystemCommand(String payload) {
+        if (payload.startsWith("OPEN_PRIVATE:")) {
+            // Format: OPEN_PRIVATE:chatId:TargetName
+            String[] parts = payload.split(":");
+            if (parts.length >= 3) {
+                joinRoom(parts[1], parts[2]);
+                requestRoomList();
             }
-        });
+        }
     }
 
     private void processIncomingMessage(Message msg) {
+        if (msg == null) return;
+
         String content = msg.getContent();
 
         if (!msg.getChatId().equals(currentChatId)) {
@@ -210,8 +240,13 @@ public class ChatController implements ChatObserver {
     }
 
     private void updateSidebar(String rawData) {
+        if (rawData == null || rawData.isEmpty()) return;
+
+        String prefix = "ROOMLIST:";
+        if (rawData.length() <= prefix.length()) return;
+
         // Format data: "ROOMLIST:id1:name1,id2:name2"
-        String payload = rawData.substring("ROOMLIST:".length());
+        String payload = rawData.substring(prefix.length());
         String[] rooms = payload.split(",");
 
         chatList.getItems().clear();
@@ -256,7 +291,7 @@ public class ChatController implements ChatObserver {
                 // Kirim perintah CREATE_GROUP ke server
                 // Format: CREATE_GROUP:NamaGrup
                 // ChatID "SYSTEM" dipakai karena ini pesan sistem
-                Message msg = MessageFactory.createMessage("SYSTEM", currentUser, "CREATE_GROUP:" + name.trim());
+                Message msg = MessageFactory.createMessage(Constants.SYSTEM_SENDER, currentUser, "CREATE_GROUP:" + name.trim());
                 client.sendMessage(msg);
             }
         });
@@ -302,7 +337,7 @@ public class ChatController implements ChatObserver {
                 Message msg = MessageFactory.createMessage(currentChatId, currentUser, caption, base64Image);
                 client.sendMessage(msg);
             } catch (IOException _) {
-                showAlert("Error", "Gagal membaca file gambar.");
+                showAlert(ERROR, "Gagal membaca file gambar.");
             }
         }
     }
@@ -333,48 +368,7 @@ public class ChatController implements ChatObserver {
         row.setPadding(new Insets(5, 0, 5, 0));
         row.setSpacing(10);
 
-        Node contentNode;
-        if (msg instanceof ImageMessage imgMsg) {
-            try {
-                byte[] imageBytes = Base64.getDecoder().decode(imgMsg.getBase64Data());
-                Image img = new Image(new ByteArrayInputStream(imageBytes));
-                ImageView imageView = new ImageView(img);
-                imageView.setFitWidth(220);
-                imageView.setPreserveRatio(true);
-                imageView.setCursor(Cursor.HAND);
-
-                imageView.imageProperty().addListener((obs, o, newImg) -> {
-                    if (newImg != null) {
-                        double h = newImg.getHeight() * (220 / newImg.getWidth());
-                        javafx.scene.shape.Rectangle dynClip = new javafx.scene.shape.Rectangle(220, h);
-                        dynClip.setArcWidth(15);
-                        dynClip.setArcHeight(15);
-                        imageView.setClip(dynClip);
-                    }
-                });
-
-                imageView.setOnMouseClicked(event -> showFullscreenImage(img));
-
-                String captionText = msg.getContent();
-                if (captionText != null && !captionText.isEmpty()) {
-                    Label captionLabel = new Label(captionText);
-                    captionLabel.setWrapText(true);
-                    captionLabel.setMaxWidth(220);
-                    captionLabel.setStyle("-fx-font-size: 14px; -fx-padding: 5 0 0 0;");
-                    contentNode = new VBox(imageView, captionLabel);
-                } else {
-                    contentNode = imageView;
-                }
-            } catch (Exception _) {
-                contentNode = new Label("⚠️ Gambar Rusak");
-            }
-        } else {
-            Label textLabel = new Label(msg.getContent());
-            textLabel.setWrapText(true);
-            textLabel.setMaxWidth(300);
-            textLabel.setStyle("-fx-font-size: 14px; -fx-text-fill: black;");
-            contentNode = textLabel;
-        }
+        Node contentNode = createMessageContent(msg);
 
         VBox bubble = new VBox();
         bubble.setPadding(new Insets(8, 12, 8, 12));
@@ -382,7 +376,7 @@ public class ChatController implements ChatObserver {
 
         if (!isSelf) {
             Label nameLabel = new Label(msg.getSender().getName());
-            nameLabel.setStyle("-fx-font-weight: bold; -fx-font-size: 12px; -fx-text-fill: #E53935;"); // Merah bata
+            nameLabel.setStyle("-fx-font-weight: bold; -fx-font-size: 12px; -fx-text-fill: #E53935;");
             nameLabel.setPadding(new Insets(0, 0, 3, 0));
             bubble.getChildren().add(nameLabel);
         }
@@ -397,39 +391,91 @@ public class ChatController implements ChatObserver {
         timeBox.setAlignment(Pos.BOTTOM_RIGHT);
         bubble.getChildren().add(timeBox);
 
+        configureBubbleStyle(row, bubble, msg, isSelf);
+
+        messageContainer.getChildren().add(row);
+    }
+
+    private Node createMessageContent(Message msg) {
+        if (msg instanceof ImageMessage imgMsg) {
+            return createImageNode(imgMsg);
+        } else {
+            Label textLabel = new Label(msg.getContent());
+            textLabel.setWrapText(true);
+            textLabel.setMaxWidth(300);
+            textLabel.setStyle("-fx-font-size: 14px; -fx-text-fill: black;");
+            return textLabel;
+        }
+    }
+
+    private Node createImageNode(ImageMessage imgMsg) {
+        try {
+            byte[] imageBytes = Base64.getDecoder().decode(imgMsg.getBase64Data());
+            Image img = new Image(new ByteArrayInputStream(imageBytes));
+            ImageView imageView = new ImageView(img);
+            imageView.setFitWidth(220);
+            imageView.setPreserveRatio(true);
+            imageView.setCursor(Cursor.HAND);
+
+            // Logic clip rounded corner
+            imageView.imageProperty().addListener((_, _, newImg) -> {
+                if (newImg != null) {
+                    double h = newImg.getHeight() * (220 / newImg.getWidth());
+                    javafx.scene.shape.Rectangle dynClip = new javafx.scene.shape.Rectangle(220, h);
+                    dynClip.setArcWidth(15);
+                    dynClip.setArcHeight(15);
+                    imageView.setClip(dynClip);
+                }
+            });
+
+            imageView.setOnMouseClicked(event -> showFullscreenImage(img));
+
+            String captionText = imgMsg.getContent();
+            if (captionText != null && !captionText.isEmpty()) {
+                Label captionLabel = new Label(captionText);
+                captionLabel.setWrapText(true);
+                captionLabel.setMaxWidth(220);
+                captionLabel.setStyle("-fx-font-size: 14px; -fx-padding: 5 0 0 0;");
+                return new VBox(imageView, captionLabel);
+            } else {
+                return imageView;
+            }
+        } catch (Exception _) {
+            return new Label("⚠️ Gambar Rusak");
+        }
+    }
+
+    private void configureBubbleStyle(HBox row, VBox bubble, Message msg, boolean isSelf) {
         if (isSelf) {
             row.setAlignment(Pos.CENTER_RIGHT);
-
             bubble.setStyle("-fx-background-color: #dcf8c6; " +
                     "-fx-background-radius: 15 15 0 15; " +
                     "-fx-effect: dropshadow(three-pass-box, rgba(0,0,0,0.1), 3, 0, 0, 1);");
-
             row.getChildren().add(bubble);
-
         } else {
             row.setAlignment(Pos.CENTER_LEFT);
-
             bubble.setStyle("-fx-background-color: #ffffff; " +
                     "-fx-background-radius: 15 15 15 0; " +
                     "-fx-effect: dropshadow(three-pass-box, rgba(0,0,0,0.1), 3, 0, 0, 1);");
 
             Node avatarNode = createAvatar(msg.getSender());
-
-            // Kirim Request Private Chat
-            avatarNode.setCursor(Cursor.HAND);
-            avatarNode.setOnMouseClicked(e -> {
-                if (!msg.getSender().getPhoneNumber().equals(currentUser.getPhoneNumber())) {
-                    // Kirim Request Private Chat
-                    Message req = MessageFactory
-                            .createMessage("SYSTEM", currentUser, "REQ_PRIVATE:" + msg.getSender().getPhoneNumber());
-                    client.sendMessage(req);
-                }
-            });
-
+            setupAvatarClickEvent(avatarNode, msg.getSender());
             row.getChildren().addAll(avatarNode, bubble);
         }
+    }
 
-        messageContainer.getChildren().add(row);
+    private void setupAvatarClickEvent(Node avatarNode, User sender) {
+        avatarNode.setCursor(Cursor.HAND);
+        avatarNode.setOnMouseClicked(e -> {
+            if (!sender.getPhoneNumber().equals(currentUser.getPhoneNumber())) {
+                Message req = MessageFactory.createMessage(
+                        Constants.SYSTEM_SENDER,
+                        currentUser,
+                        "REQ_PRIVATE:" + sender.getPhoneNumber()
+                );
+                client.sendMessage(req);
+            }
+        });
     }
 
     private Node createAvatar(User user) {

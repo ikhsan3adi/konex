@@ -16,6 +16,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+@SuppressWarnings("java:S6548")
 public class SocketClient {
     private static final Logger LOGGER = Logger.getLogger(SocketClient.class.getName());
     private static SocketClient instance;
@@ -99,28 +100,40 @@ public class SocketClient {
         try {
             while (running && !socket.isClosed()) {
                 Object data = input.readObject();
-                if (data instanceof Response) {
-                    Response<?> resp = (Response<?>) data;
-                    String cmd = resp.getCommand();
-
-                    if ("LOGIN_SUCCESS".equals(cmd)) {
-                        if (loginCallback != null) {
-                            if (resp.getData() instanceof User) {
-                                this.currentUser = (User) resp.getData();
-                            }
-                            Platform.runLater(() -> loginCallback.onLoginResult(true, "Login Sukses"));
-                        }
-                    } else if ("LOGIN_FAILED".equals(cmd)) {
-                        if (loginCallback != null) {
-                            Platform.runLater(() -> loginCallback.onLoginResult(false, resp.getMessage()));
-                        }
-                    } else {
-                        notifyObservers(resp);
-                    }
-                }
+                handleResponse(data);
             }
         } catch (IOException | ClassNotFoundException _) {
             LOGGER.info("Disconnected.");
+        }
+    }
+
+    private void handleResponse(Object data) {
+        if (data instanceof Response) {
+            Response<?> resp = (Response<?>) data;
+            String cmd = resp.getCommand();
+
+            if ("LOGIN_SUCCESS".equals(cmd)) {
+                handleLoginSuccess(resp);
+            } else if ("LOGIN_FAILED".equals(cmd)) {
+                handleLoginFailed(resp);
+            } else {
+                notifyObservers(resp);
+            }
+        }
+    }
+
+    private void handleLoginSuccess(Response<?> resp) {
+        if (loginCallback != null) {
+            if (resp.getData() instanceof User) {
+                this.currentUser = (User) resp.getData();
+            }
+            Platform.runLater(() -> loginCallback.onLoginResult(true, "Login Sukses"));
+        }
+    }
+
+    private void handleLoginFailed(Response<?> resp) {
+        if (loginCallback != null) {
+            Platform.runLater(() -> loginCallback.onLoginResult(false, resp.getMessage()));
         }
     }
 
