@@ -2,7 +2,7 @@ package org.konex.common.model;
 
 import java.io.Serializable;
 
-public class Response<T> implements Serializable {
+public class Response<T extends Serializable> implements Serializable {
     private final String command;
     private final boolean success;
     private final String message;
@@ -15,11 +15,11 @@ public class Response<T> implements Serializable {
         this.data = data;
     }
 
-    public static <T> Response<T> success(String command, T data) {
+    public static <T extends Serializable> Response<T> success(String command, T data) {
         return new Response<>(command, true, "OK", data);
     }
 
-    public static <T> Response<T> error(String command, String errorMessage) {
+    public static <T extends Serializable> Response<T> error(String command, String errorMessage) {
         return new Response<>(command, false, errorMessage, null);
     }
 

@@ -13,15 +13,21 @@ public class ServerApp {
     private static final int DEFAULT_PORT = 12345;
     private final int port;
     private final ExecutorService clientPool = Executors.newCachedThreadPool();
+    private volatile boolean running = true;
 
     public ServerApp(int port) {
         this.port = port;
     }
 
+    public void stop() {
+        running = false;
+        clientPool.shutdown();
+    }
+
     public void start() {
         try (ServerSocket serverSocket = new ServerSocket(port)) {
             LOGGER.info(() -> "KoneX Server running on port " + port);
-            while (true) {
+            while (running) {
                 Socket clientSocket = serverSocket.accept();
                 LOGGER.info(() -> "New client connected: " + clientSocket.getRemoteSocketAddress());
                 ClientHandler handler = new ClientHandler(clientSocket);
