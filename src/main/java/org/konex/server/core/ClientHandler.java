@@ -486,7 +486,7 @@ public class ClientHandler implements Runnable {
                 }
             }
         } catch (IOException _) {
-            // Intentionally empty: send errors can be safely ignored, connection will be cleaned up on next read failure
+            // ignored
         }
     }
 
@@ -495,7 +495,7 @@ public class ClientHandler implements Runnable {
             try {
                 c.close();
             } catch (Exception _) {
-                // Intentionally empty: close errors can be safely ignored during cleanup
+                // ignored
             }
         }
     }

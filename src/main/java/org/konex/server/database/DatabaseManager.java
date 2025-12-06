@@ -13,8 +13,6 @@ import java.util.logging.Logger;
 public class DatabaseManager {
     private static final Logger LOGGER = Logger.getLogger(DatabaseManager.class.getName());
 
-    private static DatabaseManager instance;
-
     private MongoClient mongoClient;
     private MongoDatabase database;
 
@@ -26,27 +24,27 @@ public class DatabaseManager {
             String dbName = dotenv.get("MONGO_DB_NAME");
 
             if (connectionString == null || dbName == null) {
-                throw new RuntimeException("Gagal memuat konfigurasi database dari .env");
+                throw new IllegalStateException("Gagal memuat konfigurasi database dari .env");
             }
 
             this.mongoClient = MongoClients.create(connectionString);
             this.database = mongoClient.getDatabase(dbName);
 
             this.database.runCommand(new Document("ping", 1));
-            LOGGER.info("Database Connected: " + dbName);
+            LOGGER.info(() -> "Database Connected: " + dbName);
 
         } catch (Exception e) {
-            System.err.println("Database Connection Failed: " + e.getMessage());
-            LOGGER.log(Level.SEVERE, "Database Connection Failed: " + e.getMessage(), e);
+            LOGGER.log(Level.SEVERE, e, () -> "Database Connection Failed: " + e.getMessage());
             System.exit(1);
         }
     }
 
-    public static synchronized DatabaseManager getInstance() {
-        if (instance == null) {
-            instance = new DatabaseManager();
-        }
-        return instance;
+    private static final class InstanceHolder {
+        private static final DatabaseManager INSTANCE = new DatabaseManager();
+    }
+
+    public static DatabaseManager getInstance() {
+        return InstanceHolder.INSTANCE;
     }
 
     public MongoCollection<Document> getCollection(String collectionName) {
