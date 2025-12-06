@@ -17,10 +17,10 @@ public abstract class Message implements Serializable {
     protected String content;
     protected Date date;
 
-    public Message() {
+    protected Message() {
     }
 
-    public Message(String chatId, User sender, String content) {
+    protected Message(String chatId, User sender, String content) {
         this.chatId = chatId;
         this.sender = sender;
         this.content = content;

@@ -1,6 +1,11 @@
 package org.konex.common.model;
 
 public class MessageFactory {
+
+    private MessageFactory() {
+        //Utility class
+    }
+
     public static Message createMessage(String chatId, User sender, String text) {
         return new TextMessage(chatId, sender, text);
     }
