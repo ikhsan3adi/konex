@@ -14,9 +14,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Logger;
-import java.util.stream.Collectors;
 
-public class ChatRoomService {
+public final class ChatRoomService {
     private static final Logger LOGGER = Logger.getLogger(ChatRoomService.class.getName());
     private static ChatRoomService instance;
 
@@ -75,10 +74,10 @@ public class ChatRoomService {
                 }
 
                 activeRooms.put(groupId, group);
-                LOGGER.info("Group loaded from DB: " + groupName);
+                LOGGER.info(() -> String.format("Group loaded from DB: %s", groupName));
             }
         } catch (Exception e) {
-            LOGGER.warning("Failed to load groups: " + e.getMessage());
+            LOGGER.warning(() -> String.format("Failed to load groups: %s", e.getMessage()));
         }
     }
 
@@ -107,7 +106,7 @@ public class ChatRoomService {
         try {
             List<String> memberPhones = group.getMembers().stream()
                     .map(User::getPhoneNumber)
-                    .collect(Collectors.toList());
+                    .toList();
 
             Document doc = new Document()
                     .append("_id", group.getId())
@@ -125,7 +124,7 @@ public class ChatRoomService {
 
             LOGGER.info("Group saved to DB: " + group.getName());
         } catch (Exception e) {
-            LOGGER.severe("Failed to save group: " + e.getMessage());
+            LOGGER.severe(() -> String.format("Failed to save group: %s", e.getMessage()));
         }
     }
 
@@ -201,7 +200,7 @@ public class ChatRoomService {
 
             LOGGER.info("Private Chat saved: " + chat.getId());
         } catch (Exception e) {
-            LOGGER.severe("Failed save private chat: " + e.getMessage());
+            LOGGER.severe(() -> String.format("Failed save private chat: %s", e.getMessage()));
         }
     }
 }
