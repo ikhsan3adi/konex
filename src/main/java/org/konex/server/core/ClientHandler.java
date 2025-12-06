@@ -71,7 +71,7 @@ public class ClientHandler implements Runnable {
                 } else if ("JOINED".equals(content)) {
                     handleJoin(message);
                 } else if ("REQ_ROOMS".equals(content)) {
-                    handleRoomRequest(message);
+                    handleRoomRequest();
                 } else if (content != null && content.startsWith("CREATE_GROUP:")) {
                     handleCreateGroup(message);
                 } else if (content != null && content.startsWith("/kick")) {
@@ -130,10 +130,10 @@ public class ClientHandler implements Runnable {
 
                 SESSIONS.put(phone, this);
 
-                LOGGER.info("User Logged In: " + this.currentUser.getName());
+                LOGGER.info(() -> "User Logged In: " + this.currentUser.getName());
                 sendResponse(Response.success("LOGIN_SUCCESS", this.currentUser));
             } else {
-                LOGGER.warning("Login Failed (Wrong Password): " + phone);
+                LOGGER.warning(() -> "Login Failed (Wrong Password): " + phone);
                 sendResponse(Response.error("LOGIN_FAILED", "Password Salah!"));
             }
         }
@@ -172,12 +172,12 @@ public class ClientHandler implements Runnable {
 
         ChatRoomService.getInstance().createNewGroup(groupName, msg.getSender());
 
-        LOGGER.info("New group created: " + groupName + " by " + msg.getSender().getName());
+        LOGGER.info(() -> "New group created: " + groupName + " by " + msg.getSender().getName());
 
         broadcastRoomListUpdate();
     }
 
-    private void handleRoomRequest(Message msg) {
+    private void handleRoomRequest() {
         String payload = generateRoomListPayload();
         Response<String> response = Response.success("ROOMLIST", payload);
 
@@ -261,16 +261,14 @@ public class ClientHandler implements Runnable {
         ChatRoom room = ChatRoomService.getInstance().getRoom(msg.getChatId());
 
         if (room == null) {
-            LOGGER.warning("Room not found: " + msg.getChatId());
+            LOGGER.warning(() -> "Room not found: " + msg.getChatId());
             return;
         }
 
-        if (room instanceof GroupChat group) {
-            if (!group.isMember(msg.getSender())) {
-                Response<String> errorResp = Response.error("ERROR", "Anda bukan anggota grup ini.");
-                sendResponse(errorResp);
-                return;
-            }
+        if (room instanceof GroupChat group && !group.isMember(msg.getSender())) {
+            Response<String> errorResp = Response.error("ERROR", "Anda bukan anggota grup ini.");
+            sendResponse(errorResp);
+            return;
         }
 
         room.sendMessage(msg);
@@ -306,7 +304,7 @@ public class ClientHandler implements Runnable {
         String[] parts = msg.getContent().split(" ");
 
         if (parts.length < 2) {
-            sendSystemMessageToClient("Format salah. Gunakan: /kick [NoHP]", msg.getSender());
+            sendSystemMessageToClient("Format salah. Gunakan: /kick [NoHP]");
             return;
         }
 
@@ -334,23 +332,23 @@ public class ClientHandler implements Runnable {
                     victimSession.sendResponse(kickNotice);
                 }
 
-                sendSystemMessageToClient("Sukses mengeluarkan user: " + targetPhone, msg.getSender());
+                sendSystemMessageToClient("Sukses mengeluarkan user: " + targetPhone);
 
                 Message announcement = new TextMessage(chatId, msg.getSender(), "telah mengeluarkan anggota " + targetPhone);
                 routeMessage(announcement);
 
-                LOGGER.info("KICK SUCCESS: " + targetPhone + " removed from " + group.getName() + " by " + msg.getSender().getName());
+                LOGGER.info(() -> "KICK SUCCESS: " + targetPhone + " removed from " + group.getName() + " by " + msg.getSender().getName());
 
             } catch (SecurityException _) {
-                LOGGER.warning("KICK FAILED: " + msg.getSender().getName() + " tried to kick but is not admin.");
-                sendSystemMessageToClient("GAGAL: Anda bukan Admin grup ini!", msg.getSender());
+                LOGGER.warning(() -> "KICK FAILED: " + msg.getSender().getName() + " tried to kick but is not admin.");
+                sendSystemMessageToClient("GAGAL: Anda bukan Admin grup ini!");
             }
         } else {
-            sendSystemMessageToClient("Perintah ini hanya berlaku di Grup.", msg.getSender());
+            sendSystemMessageToClient("Perintah ini hanya berlaku di Grup.");
         }
     }
 
-    private void sendSystemMessageToClient(String text, User recipient) {
+    private void sendSystemMessageToClient(String text) {
         User sysUser = new User();
         sysUser.setName("SYSTEM");
         sysUser.setPhoneNumber("0000");
@@ -415,7 +413,7 @@ public class ClientHandler implements Runnable {
                     new UpdateOptions().upsert(true)
             );
         } catch (Exception e) {
-            LOGGER.warning("Failed to save user: " + e.getMessage());
+            LOGGER.warning(() -> "Failed to save user: " + e.getMessage());
         }
     }
 
@@ -478,19 +476,6 @@ public class ClientHandler implements Runnable {
         }
     }
 
-    private void send(Message msg) {
-        try {
-            synchronized (this) {
-                if (output != null) {
-                    output.writeObject(msg);
-                    output.flush();
-                    output.reset();
-                }
-            }
-        } catch (IOException _) {
-        }
-    }
-
     private void sendResponse(Response<?> response) {
         try {
             synchronized (this) {
@@ -501,6 +486,7 @@ public class ClientHandler implements Runnable {
                 }
             }
         } catch (IOException _) {
+            // Intentionally empty: send errors can be safely ignored, connection will be cleaned up on next read failure
         }
     }
 
@@ -509,6 +495,7 @@ public class ClientHandler implements Runnable {
             try {
                 c.close();
             } catch (Exception _) {
+                // Intentionally empty: close errors can be safely ignored during cleanup
             }
         }
     }
