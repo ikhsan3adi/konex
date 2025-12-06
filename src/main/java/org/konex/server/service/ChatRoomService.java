@@ -4,6 +4,7 @@ import com.mongodb.client.MongoCollection;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.UpdateOptions;
 import org.bson.Document;
+import org.konex.common.constants.Constants;
 import org.konex.common.interfaces.ChatRoom;
 import org.konex.common.model.User;
 import org.konex.server.database.DatabaseManager;
@@ -15,6 +16,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Logger;
 
+@SuppressWarnings("java:S6548")
 public final class ChatRoomService {
     private static final Logger LOGGER = Logger.getLogger(ChatRoomService.class.getName());
     private static ChatRoomService instance;
@@ -45,7 +47,7 @@ public final class ChatRoomService {
 
     private void loadGroupsFromDB() {
         try {
-            MongoCollection<Document> collection = DatabaseManager.getInstance().getCollection("groups");
+            MongoCollection<Document> collection = DatabaseManager.getInstance().getCollection(Constants.COLLECTION_GROUPS);
 
             for (Document doc : collection.find()) {
                 String groupId = doc.getString("_id");
@@ -83,7 +85,7 @@ public final class ChatRoomService {
 
     private void loadPrivateChatsFromDB() {
         try {
-            MongoCollection<Document> collection = DatabaseManager.getInstance().getCollection("groups");
+            MongoCollection<Document> collection = DatabaseManager.getInstance().getCollection(Constants.COLLECTION_GROUPS);
             for (Document doc : collection.find(Filters.eq("type", "PRIVATE"))) {
                 String id = doc.getString("_id");
                 String p1 = doc.getString("user1_phone");
@@ -101,7 +103,7 @@ public final class ChatRoomService {
             // Ignore
         }
     }
-    
+
     public void saveGroup(GroupChat group) {
         try {
             List<String> memberPhones = group.getMembers().stream()
@@ -114,7 +116,7 @@ public final class ChatRoomService {
                     .append("adminPhone", group.getAdmin().getPhoneNumber())
                     .append("members", memberPhones);
 
-            DatabaseManager.getInstance().getCollection("groups").updateOne(
+            DatabaseManager.getInstance().getCollection(Constants.COLLECTION_GROUPS).updateOne(
                     Filters.eq("_id", group.getId()),
                     new Document("$set", doc),
                     new UpdateOptions().upsert(true)
@@ -192,7 +194,7 @@ public final class ChatRoomService {
                     .append("user1_phone", chat.getFirstParticipant().getPhoneNumber())
                     .append("user2_phone", chat.getSecondParticipant().getPhoneNumber());
 
-            DatabaseManager.getInstance().getCollection("groups").updateOne(
+            DatabaseManager.getInstance().getCollection(Constants.COLLECTION_GROUPS).updateOne(
                     Filters.eq("_id", chat.getId()),
                     new Document("$set", doc),
                     new UpdateOptions().upsert(true)

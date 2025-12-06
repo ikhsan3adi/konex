@@ -10,6 +10,7 @@ import org.bson.Document;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+@SuppressWarnings("java:S6548")
 public class DatabaseManager {
     private static final Logger LOGGER = Logger.getLogger(DatabaseManager.class.getName());
 

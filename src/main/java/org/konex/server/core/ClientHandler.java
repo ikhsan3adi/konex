@@ -38,10 +38,14 @@ public class ClientHandler implements Runnable {
     private volatile boolean running = true;
     private User currentUser;
 
+    private static final String FIELD_CHAT_ID = "chatId";
+    private static final String FIELD_TIMESTAMP = "timestamp";
+
     public ClientHandler(Socket socket) {
         this.socket = socket;
     }
 
+    @SuppressWarnings("java:S2093")
     @Override
     public void run() {
         try {
@@ -328,13 +332,13 @@ public class ClientHandler implements Runnable {
     private void sendToTarget(String phoneNumber, Message msg) {
         ClientHandler targetClient = SESSIONS.get(phoneNumber);
         if (targetClient != null) {
-            Response<Message> response = Response.success("NEW_MESSAGE", msg);
+            Response<Message> response = Response.success(Constants.CMD_NEW_MESSAGE, msg);
             targetClient.sendResponse(response);
         }
     }
 
     private void broadcastNotificationToAll(Message msg) {
-        Response<Message> response = Response.success("NEW_MESSAGE", msg);
+        Response<Message> response = Response.success(Constants.CMD_NEW_MESSAGE, msg);
 
         for (ClientHandler client : SESSIONS.values()) {
             client.sendResponse(response);
@@ -404,7 +408,7 @@ public class ClientHandler implements Runnable {
 
         Message sysMsg = new TextMessage("SYSTEM_NOTIF", sysUser, text);
 
-        Response<Message> response = Response.success("NEW_MESSAGE", sysMsg);
+        Response<Message> response = Response.success(Constants.CMD_NEW_MESSAGE, sysMsg);
 
         this.sendResponse(response);
     }
@@ -429,10 +433,10 @@ public class ClientHandler implements Runnable {
     private void saveToDatabase(Message msg) {
         try {
             Document doc = new Document()
-                    .append("chatId", msg.getChatId())
+                    .append(FIELD_CHAT_ID, msg.getChatId())
                     .append("senderPhone", msg.getSender().getPhoneNumber())
                     .append("senderName", msg.getSender().getName())
-                    .append("timestamp", msg.getDate())
+                    .append(FIELD_TIMESTAMP, msg.getDate())
                     .append("type", msg.getType());
 
             if (msg instanceof TextMessage) {
@@ -470,13 +474,13 @@ public class ClientHandler implements Runnable {
         try {
             FindIterable<Document> docs = DatabaseManager.getInstance()
                     .getCollection(Constants.COLLECTION_MESSAGES)
-                    .find(Filters.eq("chatId", chatId))
-                    .sort(Sorts.ascending("timestamp"));
+                    .find(Filters.eq(FIELD_CHAT_ID, chatId))
+                    .sort(Sorts.ascending(FIELD_TIMESTAMP));
 
             for (Document doc : docs) {
                 Message msg = documentToMessage(doc);
                 if (msg != null) {
-                    Response<Message> response = Response.success("NEW_MESSAGE", msg);
+                    Response<Message> response = Response.success(Constants.CMD_NEW_MESSAGE, msg);
                     this.sendResponse(response);
                 }
             }
@@ -488,10 +492,10 @@ public class ClientHandler implements Runnable {
     private Message documentToMessage(Document doc) {
         try {
             String type = doc.getString("type");
-            String chatId = doc.getString("chatId");
+            String chatId = doc.getString(FIELD_CHAT_ID);
             String senderPhone = doc.getString("senderPhone");
             String senderName = doc.getString("senderName");
-            Date date = doc.getDate("timestamp");
+            Date date = doc.getDate(FIELD_TIMESTAMP);
 
             User sender = buildSenderFromDocument(senderPhone, senderName);
 

@@ -45,6 +45,7 @@ public class Response<T extends Serializable> implements Serializable {
                 "command='" + command + '\'' +
                 ", success=" + success +
                 ", message='" + message + '\'' +
+                ", data='" + data + '\'' +
                 '}';
     }
 }
