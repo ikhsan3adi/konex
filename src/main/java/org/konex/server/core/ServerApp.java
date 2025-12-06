@@ -37,9 +37,10 @@ public class ServerApp {
         if (args != null && args.length > 0) {
             try {
                 port = Integer.parseInt(args[0]);
-            } catch (NumberFormatException ignored) {
+            } catch (NumberFormatException _) //ignored
+           {
                 LOGGER.warning("Invalid port argument provided, falling back to default");
-            }
+           }
         }
         new ServerApp(port).start();
     }
