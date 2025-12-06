@@ -51,7 +51,7 @@ public class ClientHandler implements Runnable {
             LOGGER.info(() -> "Client connected: " + socket.getRemoteSocketAddress());
 
             listenLoop();
-        } catch (EOFException eof) {
+        } catch (EOFException _) {
             LOGGER.info("Client disconnected cleanly");
         } catch (IOException | ClassNotFoundException e) {
             LOGGER.log(Level.WARNING, "Client handler error", e);
@@ -170,7 +170,7 @@ public class ClientHandler implements Runnable {
 
         if (groupName.isEmpty()) return;
 
-        GroupChat newGroup = ChatRoomService.getInstance().createNewGroup(groupName, msg.getSender());
+        ChatRoomService.getInstance().createNewGroup(groupName, msg.getSender());
 
         LOGGER.info("New group created: " + groupName + " by " + msg.getSender().getName());
 
@@ -341,7 +341,7 @@ public class ClientHandler implements Runnable {
 
                 LOGGER.info("KICK SUCCESS: " + targetPhone + " removed from " + group.getName() + " by " + msg.getSender().getName());
 
-            } catch (SecurityException e) {
+            } catch (SecurityException _) {
                 LOGGER.warning("KICK FAILED: " + msg.getSender().getName() + " tried to kick but is not admin.");
                 sendSystemMessageToClient("GAGAL: Anda bukan Admin grup ini!", msg.getSender());
             }
@@ -473,7 +473,7 @@ public class ClientHandler implements Runnable {
             }
             msg.setDate(date);
             return msg;
-        } catch (Exception e) {
+        } catch (Exception _) {
             return null;
         }
     }
@@ -500,7 +500,7 @@ public class ClientHandler implements Runnable {
                     output.reset();
                 }
             }
-        } catch (IOException ignored) {
+        } catch (IOException _) {
         }
     }
 
@@ -508,7 +508,7 @@ public class ClientHandler implements Runnable {
         if (resource instanceof AutoCloseable c) {
             try {
                 c.close();
-            } catch (Exception ignored) {
+            } catch (Exception _) {
             }
         }
     }
