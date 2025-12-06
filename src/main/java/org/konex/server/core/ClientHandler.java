@@ -5,6 +5,7 @@ import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Sorts;
 import com.mongodb.client.model.UpdateOptions;
 import org.bson.Document;
+import org.konex.common.constants.Constants;
 import org.konex.common.interfaces.ChatRoom;
 import org.konex.common.model.*;
 import org.konex.server.database.DatabaseManager;
@@ -64,25 +65,50 @@ public class ClientHandler implements Runnable {
         while (running && !socket.isClosed()) {
             Object payload = input.readObject();
             if (payload instanceof Message message) {
-                String content = message.getContent();
-
-                if (content != null && content.startsWith("AUTH_REQUEST:")) {
-                    handleAuthRequest(message);
-                } else if ("JOINED".equals(content)) {
-                    handleJoin(message);
-                } else if ("REQ_ROOMS".equals(content)) {
-                    handleRoomRequest();
-                } else if (content != null && content.startsWith("CREATE_GROUP:")) {
-                    handleCreateGroup(message);
-                } else if (content != null && content.startsWith("/kick")) {
-                    handleKickCommand(message);
-                } else if (content != null && content.startsWith("REQ_PRIVATE:")) {
-                    handlePrivateChatRequest(message);
-                } else {
-                    routeMessage(message);
-                }
+                handleMessage(message);
             }
         }
+    }
+
+    private void handleMessage(Message message) {
+        String content = message.getContent();
+
+        if (content == null) {
+            routeMessage(message);
+            return;
+        }
+
+        if (content.startsWith("AUTH_REQUEST:")) {
+            handleAuthRequest(message);
+            return;
+        }
+
+        if ("JOINED".equals(content)) {
+            handleJoin(message);
+            return;
+        }
+
+        if ("REQ_ROOMS".equals(content)) {
+            handleRoomRequest();
+            return;
+        }
+
+        if (content.startsWith("CREATE_GROUP:")) {
+            handleCreateGroup(message);
+            return;
+        }
+
+        if (content.startsWith("/kick")) {
+            handleKickCommand(message);
+            return;
+        }
+
+        if (content.startsWith("REQ_PRIVATE:")) {
+            handlePrivateChatRequest(message);
+            return;
+        }
+
+        routeMessage(message);
     }
 
     private void handleAuthRequest(Message msg) {
@@ -93,49 +119,56 @@ public class ClientHandler implements Runnable {
         User requestUser = msg.getSender();
         String phone = requestUser.getPhoneNumber();
 
-        Document userDoc = DatabaseManager.getInstance().getCollection("users")
-                .find(Filters.eq("phoneNumber", phone))
+        Document userDoc = DatabaseManager.getInstance().getCollection(Constants.COLLECTION_USERS)
+                .find(Filters.eq(Constants.FIELD_PHONE_NUMBER, phone))
                 .first();
 
         if (userDoc == null) {
-            requestUser.setPassword(passwordInput);
+            handleNewUserRegistration(requestUser, passwordInput, phone);
+        } else {
+            handleExistingUserLogin(userDoc, requestUser, passwordInput, phone);
+        }
+    }
 
-            saveUserToDB(requestUser);
+    private void handleNewUserRegistration(User requestUser, String passwordInput, String phone) {
+        requestUser.setPassword(passwordInput);
+        saveUserToDB(requestUser);
 
-            this.currentUser = requestUser;
+        this.currentUser = requestUser;
+        SESSIONS.put(phone, this);
+
+        LOGGER.info("New User Registered: " + requestUser.getName());
+        sendResponse(Response.success("LOGIN_SUCCESS", requestUser));
+    }
+
+    private void handleExistingUserLogin(Document userDoc, User requestUser, String passwordInput, String phone) {
+        String dbPassword = userDoc.getString(Constants.FIELD_PASSWORD);
+
+        if (dbPassword != null && dbPassword.equals(passwordInput)) {
+            String newImage = requestUser.getProfileImage();
+
+            if (newImage != null && !newImage.isEmpty()) {
+                requestUser.setPassword(passwordInput);
+                saveUserToDB(requestUser);
+
+                this.currentUser = requestUser;
+            } else {
+                User dbUser = new User();
+                dbUser.setPhoneNumber(phone);
+                dbUser.setName(userDoc.getString(Constants.FIELD_NAME));
+                dbUser.setProfileImage(userDoc.getString(Constants.FIELD_PROFILE_IMAGE));
+                dbUser.setPassword(dbPassword);
+
+                this.currentUser = dbUser;
+            }
+
             SESSIONS.put(phone, this);
 
-            LOGGER.info("New User Registered: " + requestUser.getName());
-            sendResponse(Response.success("LOGIN_SUCCESS", requestUser));
+            LOGGER.info(() -> "User Logged In: " + this.currentUser.getName());
+            sendResponse(Response.success("LOGIN_SUCCESS", this.currentUser));
         } else {
-            String dbPassword = userDoc.getString("password");
-
-            if (dbPassword != null && dbPassword.equals(passwordInput)) {
-                String newImage = requestUser.getProfileImage();
-
-                if (newImage != null && !newImage.isEmpty()) {
-                    requestUser.setPassword(passwordInput);
-                    saveUserToDB(requestUser);
-
-                    this.currentUser = requestUser;
-                } else {
-                    User dbUser = new User();
-                    dbUser.setPhoneNumber(phone);
-                    dbUser.setName(userDoc.getString("name"));
-                    dbUser.setProfileImage(userDoc.getString("profileImage"));
-                    dbUser.setPassword(dbPassword);
-
-                    this.currentUser = dbUser;
-                }
-
-                SESSIONS.put(phone, this);
-
-                LOGGER.info(() -> "User Logged In: " + this.currentUser.getName());
-                sendResponse(Response.success("LOGIN_SUCCESS", this.currentUser));
-            } else {
-                LOGGER.warning(() -> "Login Failed (Wrong Password): " + phone);
-                sendResponse(Response.error("LOGIN_FAILED", "Password Salah!"));
-            }
+            LOGGER.warning(() -> "Login Failed (Wrong Password): " + phone);
+            sendResponse(Response.error("LOGIN_FAILED", "Password Salah!"));
         }
     }
 
@@ -150,7 +183,7 @@ public class ClientHandler implements Runnable {
         if (globalRoom instanceof GroupChat group) {
             group.inviteMember(currentUser);
 
-            if (!group.getId().equals("global_room")) {
+            if (!group.getId().equals(Constants.GLOBAL_ROOM_CHAT_ID)) {
                 ChatRoomService.getInstance().saveGroup(group);
             }
 
@@ -193,29 +226,38 @@ public class ClientHandler implements Runnable {
 
         boolean first = true;
         for (ChatRoom room : rooms) {
-            if (room instanceof GroupChat group) {
+            String entry = getRoomEntry(room);
+            if (entry != null) {
                 if (!first) sb.append(",");
-                sb.append(group.getId()).append(":").append(group.getName());
+                sb.append(entry);
                 first = false;
-            }
-            // PRIVATE
-            else if (room instanceof PrivateChat pc) {
-                User other = null;
-                if (pc.getFirstParticipant().getPhoneNumber().equals(currentUser.getPhoneNumber())) {
-                    other = pc.getSecondParticipant();
-                } else if (pc.getSecondParticipant().getPhoneNumber().equals(currentUser.getPhoneNumber())) {
-                    other = pc.getFirstParticipant();
-                }
-
-                if (other != null) {
-                    if (!first) sb.append(",");
-
-                    sb.append(pc.getId()).append(":").append(other.getName());
-                    first = false;
-                }
             }
         }
         return sb.toString();
+    }
+
+    private String getRoomEntry(ChatRoom room) {
+        if (room instanceof GroupChat group) {
+            return group.getId() + ":" + group.getName();
+        }
+
+        if (room instanceof PrivateChat pc) {
+            User other = getOtherParticipant(pc);
+            if (other != null) {
+                return pc.getId() + ":" + other.getName();
+            }
+        }
+        return null;
+    }
+
+    private User getOtherParticipant(PrivateChat pc) {
+        if (pc.getFirstParticipant().getPhoneNumber().equals(currentUser.getPhoneNumber())) {
+            return pc.getSecondParticipant();
+        }
+        if (pc.getSecondParticipant().getPhoneNumber().equals(currentUser.getPhoneNumber())) {
+            return pc.getFirstParticipant();
+        }
+        return null;
     }
 
     private void broadcastRoomListUpdate() {
@@ -230,15 +272,15 @@ public class ClientHandler implements Runnable {
     private void handlePrivateChatRequest(Message msg) {
         String targetPhone = msg.getContent().substring("REQ_PRIVATE:".length());
 
-        Document targetDoc = DatabaseManager.getInstance().getCollection("users")
-                .find(Filters.eq("phoneNumber", targetPhone)).first();
+        Document targetDoc = DatabaseManager.getInstance().getCollection(Constants.COLLECTION_USERS)
+                .find(Filters.eq(Constants.FIELD_PHONE_NUMBER, targetPhone)).first();
 
         if (targetDoc == null) return;
 
         User targetUser = new User();
-        targetUser.setPhoneNumber(targetDoc.getString("phoneNumber"));
-        targetUser.setName(targetDoc.getString("name"));
-        targetUser.setProfileImage(targetDoc.getString("profileImage"));
+        targetUser.setPhoneNumber(targetDoc.getString(Constants.FIELD_PHONE_NUMBER));
+        targetUser.setName(targetDoc.getString(Constants.FIELD_NAME));
+        targetUser.setProfileImage(targetDoc.getString(Constants.FIELD_PROFILE_IMAGE));
 
         ChatRoom room = ChatRoomService.getInstance().getOrCreatePrivateChat(msg.getSender(), targetUser);
 
@@ -313,38 +355,45 @@ public class ClientHandler implements Runnable {
 
         ChatRoom room = ChatRoomService.getInstance().getRoom(chatId);
 
-        if (room instanceof GroupChat group) {
-            // PROXY PATTERN
-            GroupProxy proxy = new GroupProxy(group);
-
-            User targetUser = new User();
-            targetUser.setPhoneNumber(targetPhone);
-
-            try {
-                // cek msg.getSender() adalah Admin
-                proxy.kickMember(targetUser, msg.getSender());
-
-                ChatRoomService.getInstance().saveGroup(group);
-
-                ClientHandler victimSession = SESSIONS.get(targetPhone);
-                if (victimSession != null) {
-                    Response<String> kickNotice = Response.success("KICKED", chatId);
-                    victimSession.sendResponse(kickNotice);
-                }
-
-                sendSystemMessageToClient("Sukses mengeluarkan user: " + targetPhone);
-
-                Message announcement = new TextMessage(chatId, msg.getSender(), "telah mengeluarkan anggota " + targetPhone);
-                routeMessage(announcement);
-
-                LOGGER.info(() -> "KICK SUCCESS: " + targetPhone + " removed from " + group.getName() + " by " + msg.getSender().getName());
-
-            } catch (SecurityException _) {
-                LOGGER.warning(() -> "KICK FAILED: " + msg.getSender().getName() + " tried to kick but is not admin.");
-                sendSystemMessageToClient("GAGAL: Anda bukan Admin grup ini!");
-            }
-        } else {
+        if (!(room instanceof GroupChat group)) {
             sendSystemMessageToClient("Perintah ini hanya berlaku di Grup.");
+            return;
+        }
+
+        executeKickMember(group, targetPhone, chatId, msg);
+    }
+
+    private void executeKickMember(GroupChat group, String targetPhone, String chatId, Message msg) {
+        GroupProxy proxy = new GroupProxy(group);
+
+        User targetUser = new User();
+        targetUser.setPhoneNumber(targetPhone);
+
+        try {
+            proxy.kickMember(targetUser, msg.getSender());
+
+            ChatRoomService.getInstance().saveGroup(group);
+
+            notifyKickedUser(targetPhone, chatId);
+
+            sendSystemMessageToClient("Sukses mengeluarkan user: " + targetPhone);
+
+            Message announcement = new TextMessage(chatId, msg.getSender(), "telah mengeluarkan anggota " + targetPhone);
+            routeMessage(announcement);
+
+            LOGGER.info(() -> "KICK SUCCESS: " + targetPhone + " removed from " + group.getName() + " by " + msg.getSender().getName());
+
+        } catch (SecurityException _) {
+            LOGGER.warning(() -> "KICK FAILED: " + msg.getSender().getName() + " tried to kick but is not admin.");
+            sendSystemMessageToClient("GAGAL: Anda bukan Admin grup ini!");
+        }
+    }
+
+    private void notifyKickedUser(String targetPhone, String chatId) {
+        ClientHandler victimSession = SESSIONS.get(targetPhone);
+        if (victimSession != null) {
+            Response<String> kickNotice = Response.success("KICKED", chatId);
+            victimSession.sendResponse(kickNotice);
         }
     }
 
@@ -368,7 +417,7 @@ public class ClientHandler implements Runnable {
 
             LOGGER.info(currentUser.getName() + " has left.");
 
-            Message leftMsg = new TextMessage("global_room", currentUser, "LEFT");
+            Message leftMsg = new TextMessage(Constants.GLOBAL_ROOM_CHAT_ID, currentUser, "LEFT");
             broadcastNotificationToAll(leftMsg);
         }
 
@@ -393,7 +442,7 @@ public class ClientHandler implements Runnable {
                 doc.append("base64Data", imgMsg.getBase64Data());
             }
 
-            DatabaseManager.getInstance().getCollection("messages").insertOne(doc);
+            DatabaseManager.getInstance().getCollection(Constants.COLLECTION_MESSAGES).insertOne(doc);
         } catch (Exception e) {
             LOGGER.log(Level.SEVERE, "DB Error", e);
         }
@@ -402,13 +451,13 @@ public class ClientHandler implements Runnable {
     private void saveUserToDB(User user) {
         try {
             Document doc = new Document()
-                    .append("phoneNumber", user.getPhoneNumber())
-                    .append("name", user.getName())
-                    .append("password", user.getPassword())
-                    .append("profileImage", user.getProfileImage());
+                    .append(Constants.FIELD_PHONE_NUMBER, user.getPhoneNumber())
+                    .append(Constants.FIELD_NAME, user.getName())
+                    .append(Constants.FIELD_PASSWORD, user.getPassword())
+                    .append(Constants.FIELD_PROFILE_IMAGE, user.getProfileImage());
 
-            DatabaseManager.getInstance().getCollection("users").updateOne(
-                    Filters.eq("phoneNumber", user.getPhoneNumber()),
+            DatabaseManager.getInstance().getCollection(Constants.COLLECTION_USERS).updateOne(
+                    Filters.eq(Constants.FIELD_PHONE_NUMBER, user.getPhoneNumber()),
                     new Document("$set", doc),
                     new UpdateOptions().upsert(true)
             );
@@ -420,7 +469,7 @@ public class ClientHandler implements Runnable {
     private void loadAndSendHistory(String chatId) {
         try {
             FindIterable<Document> docs = DatabaseManager.getInstance()
-                    .getCollection("messages")
+                    .getCollection(Constants.COLLECTION_MESSAGES)
                     .find(Filters.eq("chatId", chatId))
                     .sort(Sorts.ascending("timestamp"));
 
@@ -444,36 +493,45 @@ public class ClientHandler implements Runnable {
             String senderName = doc.getString("senderName");
             Date date = doc.getDate("timestamp");
 
-            User sender = new User();
-            sender.setPhoneNumber(senderPhone);
+            User sender = buildSenderFromDocument(senderPhone, senderName);
 
-            Document userDoc = DatabaseManager.getInstance().getCollection("users")
-                    .find(Filters.eq("phoneNumber", senderPhone))
-                    .first();
-
-            if (userDoc != null) {
-                sender.setName(userDoc.getString("name"));
-                sender.setProfileImage(userDoc.getString("profileImage"));
-            } else {
-                sender.setName(senderName);
+            Message msg = createMessageByType(type, chatId, sender, doc);
+            if (msg != null) {
+                msg.setDate(date);
             }
-
-            Message msg;
-            if ("TEXT".equals(type)) {
-                String content = doc.getString("content");
-                msg = new TextMessage(chatId, sender, content);
-            } else if ("IMAGE".equals(type)) {
-                String caption = doc.getString("caption");
-                String base64 = doc.getString("base64Data");
-                msg = new ImageMessage(chatId, sender, caption, base64);
-            } else {
-                return null;
-            }
-            msg.setDate(date);
             return msg;
         } catch (Exception _) {
             return null;
         }
+    }
+
+    private User buildSenderFromDocument(String senderPhone, String senderName) {
+        User sender = new User();
+        sender.setPhoneNumber(senderPhone);
+
+        Document userDoc = DatabaseManager.getInstance().getCollection(Constants.COLLECTION_USERS)
+                .find(Filters.eq(Constants.FIELD_PHONE_NUMBER, senderPhone))
+                .first();
+
+        if (userDoc != null) {
+            sender.setName(userDoc.getString(Constants.FIELD_NAME));
+            sender.setProfileImage(userDoc.getString(Constants.FIELD_PROFILE_IMAGE));
+        } else {
+            sender.setName(senderName);
+        }
+        return sender;
+    }
+
+    private Message createMessageByType(String type, String chatId, User sender, Document doc) {
+        if ("TEXT".equals(type)) {
+            String content = doc.getString("content");
+            return new TextMessage(chatId, sender, content);
+        } else if ("IMAGE".equals(type)) {
+            String caption = doc.getString("caption");
+            String base64 = doc.getString("base64Data");
+            return new ImageMessage(chatId, sender, caption, base64);
+        }
+        return null;
     }
 
     private void sendResponse(Response<?> response) {
