@@ -138,7 +138,7 @@ public class LoginController {
 
     private void loadChatView() throws IOException {
         FXMLLoader fxmlLoader = new FXMLLoader(ClientApp.class.getResource("chat-view.fxml"));
-        Scene scene = new Scene(fxmlLoader.load(), 900, 600);
+        Scene scene = new Scene(fxmlLoader.load());
         Stage stage = (Stage) nameField.getScene().getWindow();
         stage.setTitle("KoneX - " + nameField.getText());
         stage.setScene(scene);

@@ -346,7 +346,7 @@ public class ChatController implements ChatObserver {
     protected void onLogoutClick() {
         try {
             javafx.fxml.FXMLLoader fxmlLoader = new javafx.fxml.FXMLLoader(ClientApp.class.getResource("login-view.fxml"));
-            javafx.scene.Scene scene = new javafx.scene.Scene(fxmlLoader.load(), 400, 300);
+            javafx.scene.Scene scene = new javafx.scene.Scene(fxmlLoader.load());
             javafx.stage.Stage stage = (javafx.stage.Stage) headerLabel.getScene().getWindow();
             stage.setScene(scene);
             stage.centerOnScreen();
